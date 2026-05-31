@@ -17,7 +17,7 @@ function navHTML(b) {
       <a href="/#how">كيف يعمل</a>
       <a href="/contact">تواصل</a>
     </div>
-    <a class="btn primary sm" href="/app">لوحة التحكم</a>
+    <a class="btn primary sm" href="/app">تسجيل الدخول</a>
   </div></div>`;
 }
 function footerHTML(b) {

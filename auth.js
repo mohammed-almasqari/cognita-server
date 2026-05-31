@@ -38,8 +38,9 @@ export async function seedAdmin() {
   if (!email || !pass) { console.warn("⚠️  ADMIN_EMAIL/ADMIN_PASSWORD غير مضبوطين — لن يُنشأ حساب مشرف."); return; }
   const r = await q("SELECT id, is_admin FROM users WHERE lower(email)=lower($1)", [email]);
   if (r.rows[0]) {
-    if (!r.rows[0].is_admin) await q("UPDATE users SET is_admin=true WHERE id=$1", [r.rows[0].id]);
-    console.log("✓ حساب المشرف جاهز:", email);
+    // اجعل ADMIN_PASSWORD مصدر الحقيقة: حدّث الصلاحية وكلمة المرور في كل إقلاع
+    await q("UPDATE users SET is_admin=true, pass_hash=$1, plan='pro' WHERE id=$2", [hashPassword(pass), r.rows[0].id]);
+    console.log("✓ حساب المشرف مُحدّث (كلمة المرور من ADMIN_PASSWORD):", email);
   } else {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     await q("INSERT INTO users(id,email,pass_hash,plan,is_admin,created_at) VALUES($1,$2,$3,'pro',true,$4)",
