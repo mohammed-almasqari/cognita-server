@@ -61,6 +61,17 @@ app.post("/api/auth/login", ah(async (req, res) => {
   res.json({ token: signToken(u), user: publicUser(u) });
 }));
 
+// تشخيص آمن: يكشف البريد المُهيّأ وطول كلمة المرور (دون كشف كلمة المرور) لتأكيد التطابق
+app.get("/api/admin/diag", (_req, res) => {
+  const AE = (process.env.ADMIN_EMAIL || "").trim(), AP = (process.env.ADMIN_PASSWORD || "").trim();
+  res.json({
+    adminEmailConfigured: !!AE,
+    adminEmail: AE || null,
+    adminPasswordConfigured: !!AP,
+    adminPasswordLength: AP.length,
+  });
+});
+
 // دخول المشرف: يتحقّق مباشرةً من متغيّري البيئة ويُنشئ/يُصلح حساب المشرف لحظياً (مضمون)
 app.post("/api/admin/login", ah(async (req, res) => {
   const { email, password } = req.body || {};
