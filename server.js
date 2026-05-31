@@ -61,6 +61,25 @@ app.post("/api/auth/login", ah(async (req, res) => {
   res.json({ token: signToken(u), user: publicUser(u) });
 }));
 
+// دخول المشرف: يتحقّق مباشرةً من متغيّري البيئة ويُنشئ/يُصلح حساب المشرف لحظياً (مضمون)
+app.post("/api/admin/login", ah(async (req, res) => {
+  const { email, password } = req.body || {};
+  const AE = (process.env.ADMIN_EMAIL || "").trim(), AP = (process.env.ADMIN_PASSWORD || "").trim();
+  if (!AE || !AP) return res.status(500).json({ error: "لم تُضبط ADMIN_EMAIL/ADMIN_PASSWORD على الخادم." });
+  if (String(email || "").trim().toLowerCase() !== AE.toLowerCase() || String(password || "").trim() !== AP)
+    return res.status(401).json({ error: "بيانات دخول المشرف غير صحيحة." });
+  let u = (await q("SELECT * FROM users WHERE lower(email)=lower($1)", [AE])).rows[0];
+  if (!u) {
+    const id = uid();
+    await q("INSERT INTO users(id,email,pass_hash,plan,is_admin,created_at) VALUES($1,$2,$3,'pro',true,$4)", [id, AE, hashPassword(AP), Date.now()]);
+    await q("INSERT INTO sync_data(user_id,updated_at) VALUES($1,$2) ON CONFLICT DO NOTHING", [id, Date.now()]);
+    u = (await q("SELECT * FROM users WHERE id=$1", [id])).rows[0];
+  } else if (!u.is_admin) {
+    await q("UPDATE users SET is_admin=true WHERE id=$1", [u.id]); u.is_admin = true;
+  }
+  res.json({ token: signToken(u), user: publicUser(u) });
+}));
+
 // ===== الحساب والصلاحية =====
 app.get("/api/me", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];

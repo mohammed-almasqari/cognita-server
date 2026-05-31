@@ -18,7 +18,7 @@ const dt = (ms) => ms ? new Date(+ms).toLocaleDateString("ar") : "—";
 
 $("btn-login").onclick = async () => {
   try {
-    const d = await api("POST", "/api/auth/login", { email: $("email").value.trim(), password: $("password").value });
+    const d = await api("POST", "/api/admin/login", { email: $("email").value.trim(), password: $("password").value });
     if (!d.user?.isAdmin) return msg("هذا الحساب ليس مشرفاً.", "err");
     token = d.token; localStorage.setItem(tk, token); boot();
   } catch (e) { msg(e.message, "err"); }
