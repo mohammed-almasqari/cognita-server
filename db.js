@@ -30,6 +30,10 @@ async function createTables() {
       created_at BIGINT NOT NULL
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires BIGINT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_at BIGINT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_used BOOLEAN NOT NULL DEFAULT false;
 
     CREATE TABLE IF NOT EXISTS licenses (
       key TEXT PRIMARY KEY, tier TEXT NOT NULL, days INTEGER, used_by TEXT,
@@ -50,6 +54,7 @@ async function createTables() {
     );
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pp_order_id TEXT;
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt TEXT;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS coupon TEXT;
 
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY DEFAULT 1, data JSONB NOT NULL DEFAULT '{}'
@@ -59,6 +64,12 @@ async function createTables() {
       user_id TEXT NOT NULL, ym TEXT NOT NULL,
       count INTEGER NOT NULL DEFAULT 0, updated_at BIGINT,
       PRIMARY KEY (user_id, ym)
+    );
+
+    CREATE TABLE IF NOT EXISTS coupons (
+      code TEXT PRIMARY KEY, percent INTEGER NOT NULL DEFAULT 0,
+      max_uses INTEGER NOT NULL DEFAULT 0, used INTEGER NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT true, expires_at BIGINT, created_at BIGINT NOT NULL
     );
   `);
 }

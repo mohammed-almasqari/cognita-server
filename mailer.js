@@ -88,6 +88,25 @@ export async function notifyInvoiceCreated({ brand, payment, user, invoice }) {
   });
 }
 
+// إشعار: رابط إعادة تعيين كلمة المرور
+export async function notifyPasswordReset({ brand, user, resetUrl }) {
+  const body = `
+    <p style="color:#374151;font-size:14.5px">وصلنا طلب لإعادة تعيين كلمة مرور حسابك.</p>
+    <p style="color:#374151;font-size:14.5px">اضغط الزر أدناه لتعيين كلمة مرور جديدة (الرابط صالح لمدة ساعة واحدة):</p>
+    <p style="text-align:center;margin:18px 0"><a href="${esc(resetUrl)}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;text-decoration:none;font-weight:700;padding:12px 26px;border-radius:10px">إعادة تعيين كلمة المرور</a></p>
+    <p style="color:#6b7280;font-size:12.5px">إن لم تطلب ذلك فتجاهل هذه الرسالة؛ لن يتغيّر شيء.</p>`;
+  return sendMail({ to: user.email, subject: `إعادة تعيين كلمة المرور — ${esc(brand?.name || "Cognita")}`, html: layout(brand, "إعادة تعيين كلمة المرور", body) });
+}
+
+// إشعار: تذكير بقرب انتهاء الاشتراك
+export async function notifyRenewalReminder({ brand, user, daysLeft, renewUrl }) {
+  const body = `
+    <p style="color:#374151;font-size:14.5px">تذكير ودّي: اشتراك <b>Pro</b> الخاص بك سينتهي ${daysLeft <= 1 ? "خلال يوم واحد" : `خلال ${daysLeft} أيام`}.</p>
+    <p style="color:#374151;font-size:14.5px">جدّد الآن لتستمر ميزات الذكاء والمزامنة والوكلاء دون انقطاع.</p>
+    <p style="text-align:center;margin:18px 0"><a href="${esc(renewUrl)}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;text-decoration:none;font-weight:700;padding:12px 26px;border-radius:10px">جدّد اشتراكي</a></p>`;
+  return sendMail({ to: user.email, subject: `اشتراكك ينتهي قريباً — ${esc(brand?.name || "Cognita")}`, html: layout(brand, "تذكير بتجديد الاشتراك", body) });
+}
+
 // إشعار: تم الدفع وإصدار مفتاح التفعيل
 export async function notifyLicenseIssued({ brand, user, key, invoice }) {
   const body = `

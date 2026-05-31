@@ -54,6 +54,9 @@
 → { "token": "JWT...", "user": { ... } }</pre>
   </div>
 
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/auth/forgot</code><p>طلب رابط إعادة تعيين كلمة المرور بالبريد. <code>{email}</code> — يرجع <code>{ok:true}</code> دائماً (لا يكشف وجود الحساب).</p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/auth/reset</code><p>تعيين كلمة مرور جديدة. <code>{email, token, password}</code> (الرمز من رابط البريد، صالح ساعة).</p></div>
+
   <h2 class="s">٢) الحساب والصلاحية</h2>
   <div class="ep">
     <span class="m get">GET</span><code class="path">/api/me</code>
@@ -108,10 +111,17 @@
     <p class="muted small"><code>usage</code> عدد طلباتك هذا الشهر بعد هذا الطلب، و<code>limit</code> الحدّ الشهري (0 = بلا حد). النموذج يحدّده الخادم لضبط التكلفة.</p>
   </div>
 
-  <h2 class="s">٥) الفوترة</h2>
-  <div class="ep"><span class="m post">POST</span><code class="path">/api/orders</code><p>إنشاء فاتورة اشتراك. <code>{plan,cycle}</code></p></div>
-  <div class="ep"><span class="m post">POST</span><code class="path">/api/subscription/renew</code><p>إنشاء فاتورة تجديد.</p></div>
+  <h2 class="s">٥) الفوترة والدفع</h2>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/orders</code><p>إنشاء فاتورة اشتراك. <code>{plan,cycle,coupon?}</code> — يرجع الفاتورة و<code>discountPercent</code> إن وُجد كوبون.</p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/subscription/renew</code><p>إنشاء فاتورة تجديد. <code>{cycle,coupon?}</code></p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/subscription/trial</code><p>بدء تجربة Pro المجانية (مرّة واحدة، إن فعّلها المشرف).</p></div>
   <div class="ep"><span class="m get">GET</span><code class="path">/api/invoices/mine</code><p>قائمة فواتير المستخدم.</p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/invoices/:id/reference</code><p>إرسال مرجع التحويل البنكي وإرفاق الإيصال. <code>{reference, receipt?}</code> (الإيصال صورة data URL ≤ 1.5MB).</p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/invoices/:id/paypal/create</code><p>بدء دفعة PayPal للفاتورة — يرجع <code>{approveUrl}</code> لتحويل العميل إليه. يُلتقط الدفع تلقائياً عند العودة.</p></div>
+
+  <h2 class="s">٦) البيانات والخصوصية</h2>
+  <div class="ep"><span class="m get">GET</span><code class="path">/api/me/export</code><p>تنزيل نسخة JSON من بيانات الحساب والفواتير والمكتبة.</p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/me/delete</code><p>حذف الحساب وبياناته نهائياً. <code>{password}</code> للتأكيد.</p></div>
 
   <h2 class="s">رموز الأخطاء</h2>
   <table class="tbl2">

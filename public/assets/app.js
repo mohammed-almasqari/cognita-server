@@ -37,6 +37,13 @@ $("auth-submit").onclick = async () => {
   } catch (e) { msg(e.message, "err"); }
 };
 $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") $("auth-submit").click(); });
+$("forgot").onclick = async (e) => {
+  e.preventDefault();
+  const email = $("email").value.trim();
+  if (!email) return msg("أدخِل بريدك أولاً ثم اضغط «نسيت كلمة المرور؟»", "err");
+  try { await api("POST", "/api/auth/forgot", { email }); msg("إن كان البريد مسجّلاً، أرسلنا رابط إعادة التعيين ✓ تحقّق من بريدك.", "ok"); }
+  catch (e2) { msg(e2.message, "err"); }
+};
 
 // ===== الإعدادات والباقات =====
 async function loadConfig() {
@@ -77,10 +84,13 @@ async function loadAccount() {
         <div class="sub">${entitlement.expiresAt ? "يسري حتى " + dt(entitlement.expiresAt) : "اشتراك مدى الحياة — بلا انتهاء"} · كل ميزات الذكاء والمزامنة والوكلاء مفعّلة.</div>`;
     } else {
       sc.className = "hero-status free";
+      const trialDays = CFG?.pricing?.trialDays || 0;
+      const trialBtn = (trialDays > 0 && !user.trialUsed) ? ` <button class="btn ghost sm" id="go-trial">🎁 جرّب Pro ${trialDays} يوماً مجاناً</button>` : "";
       sc.innerHTML = `<div class="lab" style="color:var(--muted)">باقتك الحالية</div><div class="pn">الباقة المجانية</div>
         <div class="sub muted">ترقَّ إلى Pro لفتح التحسين بالذكاء، تشغيل الوكلاء، البحث التلقائي، المزامنة السحابية، ووكيل نماذج الخادم.</div>
-        <div class="cta"><button class="btn primary sm" id="go-pro">ترقَّ إلى Pro ✦</button></div>`;
+        <div class="cta"><button class="btn primary sm" id="go-pro">ترقَّ إلى Pro ✦</button>${trialBtn}</div>`;
       const g = $("go-pro"); if (g) g.onclick = () => $("sub-title").scrollIntoView({ behavior: "smooth", block: "center" });
+      const gt = $("go-trial"); if (gt) gt.onclick = async () => { try { await api("POST", "/api/subscription/trial", {}); msg("بدأت تجربة Pro المجانية ✓", "ok"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
     }
     // مفتاح التفعيل
     if (user.licenseKey) {
@@ -217,8 +227,25 @@ function printInvoice(v) {
 // ===== إجراءات أخرى =====
 $("logout").onclick = () => { token = ""; localStorage.removeItem(tk); show(false); };
 $("activate").onclick = async () => { try { await api("POST", "/api/license/activate", { key: $("license").value.trim() }); msg("تم التفعيل ✓"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
-$("order").onclick = async () => { try { const d = await api("POST", "/api/orders", { cycle: selectedCycle }); msg("أُنشئت الفاتورة — أكمل الدفع"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
-$("renew").onclick = async () => { try { const d = await api("POST", "/api/subscription/renew", { cycle: selectedCycle }); msg("أُنشئت فاتورة تجديد"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+const couponVal = () => ($("coupon")?.value || "").trim();
+$("order").onclick = async () => { try { const d = await api("POST", "/api/orders", { cycle: selectedCycle, coupon: couponVal() }); msg(d.discountPercent ? `أُنشئت الفاتورة بخصم ${d.discountPercent}% — أكمل الدفع` : "أُنشئت الفاتورة — أكمل الدفع"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+$("renew").onclick = async () => { try { const d = await api("POST", "/api/subscription/renew", { cycle: selectedCycle, coupon: couponVal() }); msg("أُنشئت فاتورة تجديد"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+$("export-data").onclick = async () => {
+  try {
+    const r = await fetch("/api/me/export", { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) throw new Error("تعذّر التصدير");
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a"); a.href = url; a.download = "cognita-data.json"; a.click(); URL.revokeObjectURL(url);
+    msg("تم تصدير بياناتك ✓", "ok");
+  } catch (e) { msg(e.message, "err"); }
+};
+$("delete-acct").onclick = async () => {
+  if (!confirm("سيُحذف حسابك وكل بياناتك نهائياً ولا يمكن التراجع. متابعة؟")) return;
+  const password = prompt("لتأكيد الحذف، أدخِل كلمة المرور:");
+  if (!password) return;
+  try { await api("POST", "/api/me/delete", { password }); msg("تم حذف الحساب.", "ok"); token = ""; localStorage.removeItem(tk); setTimeout(() => (location.href = "/"), 1500); }
+  catch (e) { msg(e.message, "err"); }
+};
 
 function showPay(invoice) {
   $("pay").style.display = "block";

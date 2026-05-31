@@ -219,6 +219,7 @@ async function loadSettings() {
   $("s-currency").value = c.pricing.currencyLabel || "ريال";
   const pro = c.pricing.plans?.pro || {};
   $("s-monthly").value = pro.monthly ?? ""; $("s-annual").value = pro.annual ?? ""; $("s-lifetime").value = pro.lifetime ?? "";
+  $("s-trial").value = c.pricing.trialDays ?? 0;
   // إعدادات الدفع
   const pay = c.payment || {};
   $("pay-bank-enabled").checked = pay.bankEnabled !== false;
@@ -262,7 +263,7 @@ $("save-settings").onclick = async () => {
   try {
     await api("POST", "/api/admin/settings", {
       brand: { name: $("s-name").value, tagline: $("s-tagline").value, domain: $("s-domain").value, email: $("s-email").value, phone: $("s-phone").value },
-      pricing: { currencyLabel: $("s-currency").value, plans: { free: { name: "مجاني", monthly: 0, annual: 0, lifetime: 0 }, pro: { name: "Pro", monthly: +$("s-monthly").value || 0, annual: +$("s-annual").value || 0, lifetime: +$("s-lifetime").value || 0 } } },
+      pricing: { currencyLabel: $("s-currency").value, trialDays: +$("s-trial").value || 0, plans: { free: { name: "مجاني", monthly: 0, annual: 0, lifetime: 0 }, pro: { name: "Pro", monthly: +$("s-monthly").value || 0, annual: +$("s-annual").value || 0, lifetime: +$("s-lifetime").value || 0 } } },
     });
     msg("تم حفظ المحتوى والأسعار ✓"); CFG = await api("GET", "/api/config").catch(() => CFG);
   } catch (e) { msg(e.message, "err"); }
@@ -289,12 +290,48 @@ $("gen").onclick = async () => {
   } catch (e) { msg(e.message, "err"); }
 };
 
+// تنزيل ملف محمي (CSV) عبر جلب مصادق
+async function authDownload(path, filename) {
+  try {
+    const r = await fetch(path, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) throw new Error("تعذّر التصدير");
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  } catch (e) { msg(e.message, "err"); }
+}
+$("cust-csv").onclick = () => authDownload("/api/admin/export/customers.csv", "customers.csv");
+$("inv-csv").onclick = () => authDownload("/api/admin/export/invoices.csv", "invoices.csv");
+
+// الكوبونات
+async function loadCoupons() {
+  try {
+    const { coupons } = await api("GET", "/api/admin/coupons");
+    $("coupons").innerHTML = coupons.length ? `<table class="t"><tr><th>الرمز</th><th>الخصم</th><th>الاستخدام</th><th>الحالة</th><th>إجراء</th></tr>` +
+      coupons.map((c) => `<tr>
+        <td data-label="الرمز"><code>${esc(c.code)}</code></td>
+        <td data-label="الخصم">${c.percent}%</td>
+        <td data-label="الاستخدام">${c.used}${c.max_uses ? "/" + c.max_uses : ""}</td>
+        <td data-label="الحالة"><span class="pill ${c.active ? "fulfilled" : "free"}">${c.active ? "فعّال" : "موقوف"}</span></td>
+        <td data-label="إجراء"><button class="btn sm ghost" data-ctoggle="${esc(c.code)}">${c.active ? "إيقاف" : "تفعيل"}</button></td>
+      </tr>`).join("") + `</table>` : `<p class="muted small">لا كوبونات بعد.</p>`;
+    $("coupons").querySelectorAll("[data-ctoggle]").forEach((b) => b.onclick = async () => {
+      try { await api("POST", `/api/admin/coupons/${encodeURIComponent(b.dataset.ctoggle)}/toggle`, {}); loadCoupons(); } catch (e) { msg(e.message, "err"); }
+    });
+  } catch { $("coupons").innerHTML = ""; }
+}
+$("c-add").onclick = async () => {
+  try {
+    await api("POST", "/api/admin/coupons", { code: $("c-code").value.trim(), percent: +$("c-percent").value || 10, maxUses: +$("c-max").value || 0, days: +$("c-days").value || 0 });
+    msg("تم حفظ الكوبون ✓"); $("c-code").value = ""; loadCoupons();
+  } catch (e) { msg(e.message, "err"); }
+};
+
 async function boot() {
   try {
     CFG = await api("GET", "/api/config").catch(() => null);
     $("clock").textContent = new Date().toLocaleDateString("ar", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     await loadStats(); await loadCustomers(); await loadInvoices(); await loadSettings();
-    show(true); loadAnalytics();
+    show(true); loadAnalytics(); loadCoupons();
   } catch { token = ""; localStorage.removeItem(tk); show(false); }
 }
 if (token) boot(); else show(false);

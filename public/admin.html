@@ -130,6 +130,7 @@
       <div class="toolbar">
         <h3 style="margin:0;flex:1">العملاء</h3>
         <input id="cust-search" placeholder="بحث بالبريد…">
+        <button class="btn sm ghost" id="cust-csv">⬇ CSV</button>
         <button class="btn sm ghost" id="cust-refresh">تحديث</button>
       </div>
       <div id="customers"></div>
@@ -142,6 +143,7 @@
           <option value="">كل الحالات</option><option value="unpaid">معلّقة</option>
           <option value="paid">مدفوعة</option><option value="canceled">ملغاة</option>
         </select>
+        <button class="btn sm ghost" id="inv-csv">⬇ CSV</button>
         <button class="btn sm ghost" id="inv-refresh">تحديث</button>
       </div>
       <div id="invoices"></div>
@@ -159,6 +161,7 @@
         <div><label>سعر Pro شهري</label><input id="s-monthly" type="number"></div>
         <div><label>سعر Pro سنوي</label><input id="s-annual" type="number"></div>
         <div><label>سعر مدى الحياة</label><input id="s-lifetime" type="number"></div>
+        <div><label>أيام التجربة المجانية (0 = معطّلة)</label><input id="s-trial" type="number" placeholder="0"></div>
       </div>
       <button class="btn primary" id="save-settings">حفظ المحتوى والأسعار</button>
     </div></div>
@@ -213,6 +216,17 @@
       </div>
       <button class="btn" id="gen">توليد Pro</button>
       <div id="keys" class="keylist" style="display:none"></div>
+    </div>
+    <div class="dcard" style="margin-top:16px"><h3>كوبونات الخصم</h3>
+      <p class="muted small">أنشئ كوبون خصم بنسبة مئوية يطبّقه العميل عند الاشتراك.</p>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:120px"><label>الرمز</label><input id="c-code" placeholder="WELCOME20"></div>
+        <div style="flex:1;min-width:90px"><label>الخصم %</label><input id="c-percent" type="number" placeholder="20"></div>
+        <div style="flex:1;min-width:90px"><label>حد الاستخدام (0=∞)</label><input id="c-max" type="number" placeholder="0"></div>
+        <div style="flex:1;min-width:90px"><label>صلاحية (يوم، 0=دائم)</label><input id="c-days" type="number" placeholder="0"></div>
+        <button class="btn" id="c-add">إضافة كوبون</button>
+      </div>
+      <div id="coupons" style="margin-top:12px"></div>
     </div></div>
   </main>
 </div>

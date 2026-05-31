@@ -9,8 +9,10 @@ import { hashPassword, verifyPassword, signToken, authMiddleware, adminAuth, see
 import { genKey, entitlementFor } from "./licenses.js";
 import { BRAND, PRICING, PAYMENT } from "./config.js";
 import { callModel as proxyCall } from "./models.js";
-import { mailerStatus, notifyInvoiceCreated, notifyLicenseIssued } from "./mailer.js";
+import { mailerStatus, notifyInvoiceCreated, notifyLicenseIssued, notifyPasswordReset, notifyRenewalReminder } from "./mailer.js";
 import * as paypal from "./paypal.js";
+import { randomBytes, createHash } from "crypto";
+const sha = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 // أمان: ارفض الإقلاع إن لم يُضبط سرّ JWT قوي (يمنع تزوير الرموز بسرّ افتراضي معروف)
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim().length < 16) {
@@ -47,12 +49,12 @@ app.use(express.static(PUB, { extensions: ["html"] }));
 // حدود معدّل الطلبات
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { error: "محاولات كثيرة. حاول بعد قليل." } });
 const proxyLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "طلبات كثيرة للوكيل. تمهّل قليلاً." } });
-app.use(["/api/auth/login", "/api/auth/register", "/api/admin/login"], authLimiter);
+app.use(["/api/auth/login", "/api/auth/register", "/api/admin/login", "/api/auth/forgot", "/api/auth/reset"], authLimiter);
 
 const ah = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
   console.error(e); res.status(500).json({ error: "خطأ في الخادم." });
 });
-const publicUser = (u) => ({ id: u.id, email: u.email, plan: u.plan, licenseKey: u.license_key, expiresAt: u.expires_at, isAdmin: !!u.is_admin });
+const publicUser = (u) => ({ id: u.id, email: u.email, plan: u.plan, licenseKey: u.license_key, expiresAt: u.expires_at, isAdmin: !!u.is_admin, trialUsed: !!u.trial_used });
 const entOf = (u) => entitlementFor({ plan: u.plan, expiresAt: u.expires_at });
 
 // إعدادات فعّالة = الافتراضي + ما يحفظه المشرف
@@ -143,6 +145,29 @@ app.post("/api/auth/login", ah(async (req, res) => {
   res.json({ token: signToken(u), user: publicUser(u) });
 }));
 
+// نسيت كلمة المرور — يرسل رابطاً للبريد (لا يكشف وجود الحساب)
+app.post("/api/auth/forgot", ah(async (req, res) => {
+  const email = String((req.body || {}).email || "").trim();
+  const u = email ? (await q("SELECT * FROM users WHERE lower(email)=lower($1)", [email])).rows[0] : null;
+  if (u) {
+    const tok = randomBytes(24).toString("hex");
+    await q("UPDATE users SET reset_token=$1, reset_expires=$2 WHERE id=$3", [sha(tok), Date.now() + 3600000, u.id]);
+    const cfg = await effConfig();
+    const base = (process.env.SITE_URL || cfg.brand.url || "https://cognita.dalilai.net").replace(/\/+$/, "");
+    notifyPasswordReset({ brand: cfg.brand, user: { email: u.email }, resetUrl: `${base}/reset?token=${tok}&email=${encodeURIComponent(u.email)}` }).catch(() => {});
+  }
+  res.json({ ok: true });
+}));
+app.post("/api/auth/reset", ah(async (req, res) => {
+  const { email = "", token = "", password = "" } = req.body || {};
+  if (String(password).length < 6) return res.status(400).json({ error: "كلمة المرور 6 أحرف على الأقل." });
+  const u = (await q("SELECT * FROM users WHERE lower(email)=lower($1)", [String(email).trim()])).rows[0];
+  if (!u || !u.reset_token || u.reset_token !== sha(token) || !u.reset_expires || Date.now() > Number(u.reset_expires))
+    return res.status(400).json({ error: "رابط غير صالح أو منتهٍ. اطلب رابطاً جديداً." });
+  await q("UPDATE users SET pass_hash=$1, reset_token=NULL, reset_expires=NULL WHERE id=$2", [hashPassword(password), u.id]);
+  res.json({ ok: true });
+}));
+
 // دخول المشرف: يتحقّق مباشرةً من متغيّري البيئة ويُنشئ/يُصلح حساب المشرف لحظياً (مضمون)
 app.post("/api/admin/login", ah(async (req, res) => {
   const { email, password } = req.body || {};
@@ -167,6 +192,28 @@ app.get("/api/me", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
   if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
   res.json({ user: publicUser(u), entitlement: entOf(u) });
+}));
+// تصدير بيانات المستخدم (امتثال للخصوصية)
+app.get("/api/me/export", authMiddleware, ah(async (req, res) => {
+  const u = (await q("SELECT id,email,plan,expires_at,license_key,created_at FROM users WHERE id=$1", [req.auth.id])).rows[0];
+  if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
+  const invoices = (await q("SELECT number,type,plan,cycle,amount,currency,status,created_at,paid_at FROM invoices WHERE user_id=$1", [u.id])).rows;
+  const library = (await q("SELECT prompts,flows,searches,updated_at FROM sync_data WHERE user_id=$1", [u.id])).rows[0] || {};
+  res.set("Content-Disposition", "attachment; filename=cognita-data.json");
+  res.json({ exportedAt: Date.now(), account: u, invoices, library });
+}));
+// حذف الحساب نهائياً (امتثال للخصوصية)
+app.post("/api/me/delete", authMiddleware, ah(async (req, res) => {
+  const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
+  if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
+  if (u.is_admin) return res.status(400).json({ error: "لا يمكن حذف حساب المشرف من هنا." });
+  if (!verifyPassword(String((req.body || {}).password || ""), u.pass_hash)) return res.status(401).json({ error: "كلمة المرور غير صحيحة." });
+  await q("UPDATE licenses SET used_by=NULL WHERE used_by=$1", [u.id]);
+  await q("DELETE FROM usage_log WHERE user_id=$1", [u.id]);
+  await q("DELETE FROM sync_data WHERE user_id=$1", [u.id]);
+  await q("DELETE FROM invoices WHERE user_id=$1", [u.id]);
+  await q("DELETE FROM users WHERE id=$1", [u.id]);
+  res.json({ ok: true });
 }));
 app.get("/api/license/validate", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
@@ -227,12 +274,15 @@ app.post("/api/model/proxy", proxyLimiter, authMiddleware, ah(async (req, res) =
 }));
 
 // ===== الفوترة (العميل) =====
-async function createInvoice(user, { type = "subscription", plan = "pro", cycle = "monthly", note = "" }) {
+async function createInvoice(user, { type = "subscription", plan = "pro", cycle = "monthly", note = "", discountPercent = 0, couponCode = "" }) {
   const { amount, currency } = await priceFor(plan, cycle);
+  let amt = parseFloat(amount) || 0;
+  if (discountPercent > 0) amt = Math.max(0, Math.round(amt * (1 - discountPercent / 100) * 100) / 100);
+  const fullNote = couponCode ? `كوبون ${couponCode} (−${discountPercent}%)${note ? " · " + note : ""}` : String(note || "");
   const id = uid();
-  await q(`INSERT INTO invoices(id,number,user_id,email,type,plan,cycle,amount,currency,method,note,status,created_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'bank_transfer',$10,'unpaid',$11)`,
-    [id, "INV-" + id.toUpperCase(), user.id, user.email, type, plan, cycle, amount, currency, String(note || ""), Date.now()]);
+  await q(`INSERT INTO invoices(id,number,user_id,email,type,plan,cycle,amount,currency,method,note,coupon,status,created_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'bank_transfer',$10,$11,'unpaid',$12)`,
+    [id, "INV-" + id.toUpperCase(), user.id, user.email, type, plan, cycle, String(amt), currency, fullNote, couponCode || null, Date.now()]);
   return (await q("SELECT * FROM invoices WHERE id=$1", [id])).rows[0];
 }
 // إتمام الفاتورة: إصدار مفتاح + ترقية المستخدم + إشعار بريد (يُعاد استخدامه للدفع اليدوي وPayPal)
@@ -244,25 +294,50 @@ async function fulfillInvoice(inv, daysOverride) {
   const expiresAt = days ? now + days * 864e5 : null;
   await q("UPDATE users SET plan='pro', license_key=$1, expires_at=$2 WHERE id=$3", [key, expiresAt, inv.user_id]);
   await q("UPDATE invoices SET status='paid', issued_key=$1, paid_at=$2 WHERE id=$3", [key, now, inv.id]);
+  if (inv.coupon) await q("UPDATE coupons SET used=used+1 WHERE code=$1", [inv.coupon]).catch(() => {});
   const cfg = await effConfig();
   notifyLicenseIssued({ brand: cfg.brand, user: { email: inv.email }, key, invoice: inv }).catch(() => {});
   return key;
 }
+async function resolveCoupon(code) {
+  if (!code) return { discountPercent: 0, couponCode: "" };
+  const c = (await q("SELECT * FROM coupons WHERE lower(code)=lower($1)", [String(code).trim()])).rows[0];
+  const now = Date.now();
+  if (c && c.active && (!c.expires_at || Number(c.expires_at) > now) && (!c.max_uses || c.used < c.max_uses))
+    return { discountPercent: c.percent, couponCode: c.code };
+  return null; // غير صالح
+}
 app.post("/api/orders", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
-  const { plan = "pro", cycle = "monthly", note = "" } = req.body || {};
-  const inv = await createInvoice(u, { type: "subscription", plan, cycle, note });
+  const { plan = "pro", cycle = "monthly", note = "", coupon = "" } = req.body || {};
+  const cp = await resolveCoupon(coupon);
+  if (!cp) return res.status(400).json({ error: "كوبون غير صالح أو منتهٍ." });
+  const inv = await createInvoice(u, { type: "subscription", plan, cycle, note, ...cp });
   const cfg = await effConfig();
   notifyInvoiceCreated({ brand: cfg.brand, payment: cfg.payment, user: u, invoice: inv }).catch(() => {});
-  res.json({ ok: true, invoice: inv, payment: cfg.payment });
+  res.json({ ok: true, invoice: inv, payment: publicPayment(cfg.payment), discountPercent: cp.discountPercent });
 }));
 app.post("/api/subscription/renew", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
-  const { cycle = "monthly" } = req.body || {};
-  const inv = await createInvoice(u, { type: "renewal", plan: "pro", cycle });
+  const { cycle = "monthly", coupon = "" } = req.body || {};
+  const cp = await resolveCoupon(coupon);
+  if (!cp) return res.status(400).json({ error: "كوبون غير صالح أو منتهٍ." });
+  const inv = await createInvoice(u, { type: "renewal", plan: "pro", cycle, ...cp });
   const cfg = await effConfig();
   notifyInvoiceCreated({ brand: cfg.brand, payment: cfg.payment, user: u, invoice: inv }).catch(() => {});
-  res.json({ ok: true, invoice: inv, payment: cfg.payment });
+  res.json({ ok: true, invoice: inv, payment: publicPayment(cfg.payment), discountPercent: cp.discountPercent });
+}));
+// تجربة Pro المجانية (مرّة واحدة لكل حساب)
+app.post("/api/subscription/trial", authMiddleware, ah(async (req, res) => {
+  const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
+  if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
+  const days = Number((await effConfig()).pricing.trialDays || 0);
+  if (!days) return res.status(400).json({ error: "التجربة المجانية غير مُفعّلة حالياً." });
+  if (u.trial_used) return res.status(400).json({ error: "استخدمت التجربة المجانية سابقاً." });
+  if (entOf(u).plan === "pro") return res.status(400).json({ error: "لديك اشتراك Pro فعّال بالفعل." });
+  const expiresAt = Date.now() + days * 864e5;
+  await q("UPDATE users SET plan='pro', expires_at=$1, trial_used=true WHERE id=$2", [expiresAt, u.id]);
+  res.json({ ok: true, plan: "pro", expiresAt, days });
 }));
 app.get("/api/invoices/mine", authMiddleware, ah(async (req, res) => {
   res.json({ invoices: (await q("SELECT * FROM invoices WHERE user_id=$1 ORDER BY created_at DESC", [req.auth.id])).rows });
@@ -457,8 +532,60 @@ app.post("/api/admin/licenses", adminAuth, ah(async (req, res) => {
   res.json({ keys });
 }));
 
+// ===== الكوبونات =====
+app.get("/api/admin/coupons", adminAuth, ah(async (_q, res) => {
+  res.json({ coupons: (await q("SELECT * FROM coupons ORDER BY created_at DESC LIMIT 200")).rows });
+}));
+app.post("/api/admin/coupons", adminAuth, ah(async (req, res) => {
+  const { code, percent = 10, maxUses = 0, days = 0 } = req.body || {};
+  const c = String(code || "").trim().toUpperCase();
+  if (!c) return res.status(400).json({ error: "أدخِل رمز الكوبون." });
+  const p = Math.max(1, Math.min(100, Number(percent) || 0));
+  const expires = Number(days) > 0 ? Date.now() + Number(days) * 864e5 : null;
+  await q(`INSERT INTO coupons(code,percent,max_uses,active,expires_at,created_at) VALUES($1,$2,$3,true,$4,$5)
+           ON CONFLICT (code) DO UPDATE SET percent=$2, max_uses=$3, expires_at=$4, active=true`,
+    [c, p, Number(maxUses) || 0, expires, Date.now()]);
+  res.json({ ok: true, code: c });
+}));
+app.post("/api/admin/coupons/:code/toggle", adminAuth, ah(async (req, res) => {
+  await q("UPDATE coupons SET active=NOT active WHERE code=$1", [req.params.code]); res.json({ ok: true });
+}));
+
+// ===== تصدير CSV =====
+const csvEsc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const toCsv = (rows, cols) => "﻿" + [cols.join(","), ...rows.map((r) => cols.map((c) => csvEsc(r[c])).join(","))].join("\n");
+app.get("/api/admin/export/customers.csv", adminAuth, ah(async (_q, res) => {
+  const rows = (await q("SELECT email,plan,expires_at,is_admin,created_at FROM users ORDER BY created_at DESC")).rows;
+  res.set("Content-Type", "text/csv; charset=utf-8"); res.set("Content-Disposition", "attachment; filename=customers.csv");
+  res.send(toCsv(rows, ["email", "plan", "expires_at", "is_admin", "created_at"]));
+}));
+app.get("/api/admin/export/invoices.csv", adminAuth, ah(async (_q, res) => {
+  const rows = (await q("SELECT number,email,type,plan,cycle,amount,currency,status,reference,coupon,created_at,paid_at FROM invoices ORDER BY created_at DESC")).rows;
+  res.set("Content-Type", "text/csv; charset=utf-8"); res.set("Content-Disposition", "attachment; filename=invoices.csv");
+  res.send(toCsv(rows, ["number", "email", "type", "plan", "cycle", "amount", "currency", "status", "reference", "coupon", "created_at", "paid_at"]));
+}));
+
+// ===== تذكير تجديد الاشتراك (مجدول يومي) =====
+async function runRenewalReminders() {
+  try {
+    const now = Date.now(), soon = now + 7 * 864e5;
+    const rows = (await q("SELECT id,email,expires_at,reminder_at FROM users WHERE plan='pro' AND expires_at IS NOT NULL AND expires_at>$1 AND expires_at<=$2", [now, soon])).rows;
+    if (!rows.length) return;
+    const cfg = await effConfig();
+    const base = (process.env.SITE_URL || cfg.brand.url || "https://cognita.dalilai.net").replace(/\/+$/, "");
+    for (const u of rows) {
+      if (u.reminder_at && now - Number(u.reminder_at) < 2 * 864e5) continue; // تذكير واحد كل يومين كحدّ أقصى
+      const daysLeft = Math.max(1, Math.ceil((Number(u.expires_at) - now) / 864e5));
+      await notifyRenewalReminder({ brand: cfg.brand, user: { email: u.email }, daysLeft, renewUrl: base + "/app" });
+      await q("UPDATE users SET reminder_at=$1 WHERE id=$2", [now, u.id]);
+    }
+  } catch (e) { console.warn("تذكير التجديد:", e && e.message ? e.message : e); }
+}
+setTimeout(runRenewalReminders, 30000);
+setInterval(runRenewalReminders, 24 * 60 * 60 * 1000);
+
 // ===== صفحات الموقع =====
-for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact", "docs"])
+for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact", "docs", "reset"])
   app.get("/" + p, (_q, res) => res.sendFile(path.join(PUB, p + ".html")));
 app.get("/", (_q, res) => res.sendFile(path.join(PUB, "index.html")));
 

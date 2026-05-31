@@ -70,6 +70,7 @@
     <label>البريد الإلكتروني</label><input id="email" type="email" placeholder="you@example.com" autocomplete="email">
     <label>كلمة المرور</label><input id="password" type="password" placeholder="٦ أحرف على الأقل" autocomplete="current-password">
     <button class="btn primary block" id="auth-submit">دخول</button>
+    <p class="center" style="margin-top:10px"><a href="#" id="forgot" class="small" style="color:var(--muted)">نسيت كلمة المرور؟</a></p>
   </div>
 
   <!-- الحساب -->
@@ -106,7 +107,8 @@
       <h3 id="sub-title">الاشتراك في Pro</h3>
       <p class="muted small" style="margin:0 0 12px">اختر الباقة المناسبة ثم أنشئ الطلب — الدفع بتحويل بنكي ويُصدَر مفتاحك بعد التأكيد.</p>
       <div class="plan-opts" id="plan-opts"></div>
-      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="max-width:260px"><label>كوبون خصم (اختياري)</label><input id="coupon" placeholder="WELCOME20"></div>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
         <button class="btn primary" id="order">إنشاء طلب اشتراك</button>
         <button class="btn ghost" id="renew">تجديد اشتراكي</button>
       </div>
@@ -117,6 +119,16 @@
     <div class="dcard" style="margin-top:18px">
       <div style="display:flex;align-items:center;justify-content:space-between"><h3 style="margin:0">فواتيري</h3><button class="btn sm ghost" id="inv-refresh">تحديث</button></div>
       <div id="invoices" style="margin-top:12px"></div>
+    </div>
+
+    <!-- بيانات الحساب والخصوصية -->
+    <div class="dcard" style="margin-top:18px;border-color:rgba(244,63,94,.35)">
+      <h3>بياناتي وخصوصيتي</h3>
+      <p class="muted small" style="margin:0 0 12px">تحكّم كامل ببياناتك. التصدير يجلب نسخة JSON من حسابك وفواتيرك ومكتبتك. الحذف نهائي ولا يمكن التراجع عنه.</p>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost" id="export-data">⬇ تصدير بياناتي</button>
+        <button class="btn ghost" id="delete-acct" style="border-color:rgba(244,63,94,.5);color:#fda4af">حذف حسابي نهائياً</button>
+      </div>
     </div>
   </div>
 </div>
