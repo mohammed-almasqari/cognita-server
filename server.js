@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, signToken, authMiddleware, adminAuth, see
 import { genKey, entitlementFor } from "./licenses.js";
 import { BRAND, PRICING, PAYMENT } from "./config.js";
 import { callModel as proxyCall } from "./models.js";
+import { mailerStatus, notifyInvoiceCreated, notifyLicenseIssued } from "./mailer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUB = path.join(__dirname, "public");
@@ -53,6 +54,16 @@ async function proxyConfig() {
   };
 }
 const ym = () => new Date().toISOString().slice(0, 7);
+// آخر n شهر بصيغة YYYY-MM (تصاعدياً)
+function lastMonths(n = 6) {
+  const out = [], d = new Date();
+  d.setUTCDate(1);
+  for (let i = n - 1; i >= 0; i--) {
+    const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1));
+    out.push(x.toISOString().slice(0, 7));
+  }
+  return out;
+}
 
 // ===== عام =====
 app.get("/api/health", (_q, r) => r.json({ ok: true, service: "cognita-server", version: "1.3.0" }));
@@ -180,13 +191,17 @@ app.post("/api/orders", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
   const { plan = "pro", cycle = "monthly", note = "" } = req.body || {};
   const inv = await createInvoice(u, { type: "subscription", plan, cycle, note });
-  res.json({ ok: true, invoice: inv, payment: (await effConfig()).payment });
+  const cfg = await effConfig();
+  notifyInvoiceCreated({ brand: cfg.brand, payment: cfg.payment, user: u, invoice: inv }).catch(() => {});
+  res.json({ ok: true, invoice: inv, payment: cfg.payment });
 }));
 app.post("/api/subscription/renew", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
   const { cycle = "monthly" } = req.body || {};
   const inv = await createInvoice(u, { type: "renewal", plan: "pro", cycle });
-  res.json({ ok: true, invoice: inv, payment: (await effConfig()).payment });
+  const cfg = await effConfig();
+  notifyInvoiceCreated({ brand: cfg.brand, payment: cfg.payment, user: u, invoice: inv }).catch(() => {});
+  res.json({ ok: true, invoice: inv, payment: cfg.payment });
 }));
 app.get("/api/invoices/mine", authMiddleware, ah(async (req, res) => {
   res.json({ invoices: (await q("SELECT * FROM invoices WHERE user_id=$1 ORDER BY created_at DESC", [req.auth.id])).rows });
@@ -206,7 +221,34 @@ app.get("/api/admin/stats", adminAuth, ah(async (_q, res) => {
   const active = (await q("SELECT COUNT(*) c FROM users WHERE plan='pro' AND (expires_at IS NULL OR expires_at > $1)", [Date.now()])).rows[0].c;
   const revenueRows = (await q("SELECT amount FROM invoices WHERE status='paid'")).rows;
   const revenue = revenueRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-  res.json({ customers: +customers, invoicesUnpaid: +unpaid, invoicesPaid: +paid, activeSubs: +active, revenue });
+  res.json({ customers: +customers, invoicesUnpaid: +unpaid, invoicesPaid: +paid, activeSubs: +active, revenue, mailer: mailerStatus() });
+}));
+
+// تحليلات للوحة الأدمن: سلاسل زمنية (آخر 6 أشهر) + توزيعات — تُحسب في Node لتجنّب فروق SQL
+app.get("/api/admin/analytics", adminAuth, ah(async (_q, res) => {
+  const months = lastMonths(6);
+  const invs = (await q("SELECT amount,status,paid_at FROM invoices")).rows;
+  const users = (await q("SELECT plan,expires_at,created_at FROM users WHERE is_admin=false")).rows;
+  const usageRows = (await q("SELECT ym, SUM(count) c FROM usage_log GROUP BY ym")).rows;
+  const mk = (ms) => { const t = Number(ms); return Number.isFinite(t) && t > 0 ? new Date(t).toISOString().slice(0, 7) : ""; };
+  const z = () => Object.fromEntries(months.map((m) => [m, 0]));
+  const rev = z(), subs = z(), signups = z(), usage = z();
+  for (const v of invs) if (v.status === "paid" && v.paid_at) { const m = mk(v.paid_at); if (m in rev) { rev[m] += parseFloat(v.amount) || 0; subs[m] += 1; } }
+  for (const u of users) { const m = mk(u.created_at); if (m in signups) signups[m] += 1; }
+  for (const r of usageRows) if (r.ym in usage) usage[r.ym] = Number(r.c) || 0;
+  const now = Date.now();
+  const planSplit = { free: 0, pro: 0 };
+  for (const u of users) { const pro = u.plan === "pro" && (!u.expires_at || Number(u.expires_at) > now); planSplit[pro ? "pro" : "free"]++; }
+  const statusSplit = { unpaid: 0, paid: 0, canceled: 0 };
+  for (const v of invs) statusSplit[v.status] = (statusSplit[v.status] || 0) + 1;
+  res.json({
+    months,
+    revenue: months.map((m) => rev[m]),
+    subs: months.map((m) => subs[m]),
+    signups: months.map((m) => signups[m]),
+    usage: months.map((m) => usage[m]),
+    planSplit, statusSplit,
+  });
 }));
 app.get("/api/admin/customers", adminAuth, ah(async (_q, res) => {
   res.json({ customers: (await q("SELECT id,email,plan,expires_at,is_admin,created_at FROM users ORDER BY created_at DESC LIMIT 500")).rows });
@@ -230,6 +272,8 @@ app.post("/api/admin/invoices/:id/pay", adminAuth, ah(async (req, res) => {
   const expiresAt = days ? now + days * 864e5 : null;
   await q("UPDATE users SET plan='pro', license_key=$1, expires_at=$2 WHERE id=$3", [key, expiresAt, inv.user_id]);
   await q("UPDATE invoices SET status='paid', issued_key=$1, paid_at=$2 WHERE id=$3", [key, now, inv.id]);
+  const cfg = await effConfig();
+  notifyLicenseIssued({ brand: cfg.brand, user: { email: inv.email }, key, invoice: inv }).catch(() => {});
   res.json({ ok: true, key });
 }));
 app.post("/api/admin/invoices/:id/cancel", adminAuth, ah(async (req, res) => {
