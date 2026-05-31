@@ -3,8 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { q } from "./db.js";
 
-const SECRET = process.env.JWT_SECRET || "change-me-in-production";
-if (!process.env.JWT_SECRET) console.warn("⚠️  JWT_SECRET غير مضبوط — استخدم سراً قوياً في الإنتاج.");
+// سرّ توقيع الرموز: من متغيّر البيئة إن وُجد (الأفضل)، وإلا يُضبط من القاعدة عند الإقلاع عبر setSecret().
+let SECRET = (process.env.JWT_SECRET || "").trim();
+export const hasStrongSecret = () => SECRET.length >= 16;
+export const setSecret = (s) => { const v = String(s || "").trim(); if (v.length >= 16) SECRET = v; };
 
 export const hashPassword = (p) => bcrypt.hashSync(p, 10);
 export const verifyPassword = (p, h) => bcrypt.compareSync(p, h);

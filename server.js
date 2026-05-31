@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { q, init, uid, getSettings, saveSettings } from "./db.js";
-import { hashPassword, verifyPassword, signToken, authMiddleware, adminAuth, seedAdmin } from "./auth.js";
+import { hashPassword, verifyPassword, signToken, authMiddleware, adminAuth, seedAdmin, hasStrongSecret, setSecret } from "./auth.js";
 import { genKey, entitlementFor } from "./licenses.js";
 import { BRAND, PRICING, PAYMENT } from "./config.js";
 import { callModel as proxyCall } from "./models.js";
@@ -13,12 +13,6 @@ import { mailerStatus, notifyInvoiceCreated, notifyLicenseIssued, notifyPassword
 import * as paypal from "./paypal.js";
 import { randomBytes, createHash } from "crypto";
 const sha = (s) => createHash("sha256").update(String(s)).digest("hex");
-
-// أمان: ارفض الإقلاع إن لم يُضبط سرّ JWT قوي (يمنع تزوير الرموز بسرّ افتراضي معروف)
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim().length < 16) {
-  console.error("✗ JWT_SECRET غير مضبوط أو قصير (<16 حرفاً). اضبط سرّاً عشوائياً قوياً في متغيّرات البيئة ثم أعد التشغيل.");
-  process.exit(1);
-}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUB = path.join(__dirname, "public");
@@ -505,7 +499,9 @@ app.post("/api/admin/settings", adminAuth, ah(async (req, res) => {
       },
     };
   }
+  const raw = (await getSettings()) || {}; // نحافظ على مفاتيح داخلية مثل jwtSecret
   const next = {
+    ...raw,
     brand: { ...cur.brand, ...(req.body?.brand || {}) },
     pricing: { ...cur.pricing, ...(req.body?.pricing || {}) },
     payment,
@@ -589,7 +585,23 @@ for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact", "docs
   app.get("/" + p, (_q, res) => res.sendFile(path.join(PUB, p + ".html")));
 app.get("/", (_q, res) => res.sendFile(path.join(PUB, "index.html")));
 
+// ضمان وجود سرّ توقيع قوي: من البيئة (الأفضل) أو مولّد ومحفوظ في القاعدة (يبقى ثابتاً عبر إعادات التشغيل)
+async function ensureSecret() {
+  if (hasStrongSecret()) { console.log("✓ JWT_SECRET من متغيّرات البيئة."); return; }
+  const data = (await getSettings()) || {};
+  let secret = data.jwtSecret;
+  if (!secret || String(secret).length < 16) {
+    secret = randomBytes(48).toString("base64url");
+    await saveSettings({ ...data, jwtSecret: secret });
+    console.warn("⚠️ لم يُضبط JWT_SECRET كمتغيّر بيئة — وُلّد سرّ قوي تلقائياً وحُفظ في القاعدة (يُفضّل ضبطه كمتغيّر بيئة).");
+  } else {
+    console.log("✓ JWT_SECRET من إعدادات القاعدة.");
+  }
+  setSecret(secret);
+}
+
 init()
+  .then(ensureSecret)
   // تهيئة حساب المشرف لا يجب أن تُسقط الخادم إن فشلت — نُسجّل تحذيراً ونُكمل
   .then(() => seedAdmin().catch((e) => console.warn("⚠️ تعذّر تهيئة حساب المشرف:", e && (e.message || e.code) ? (e.message || e.code) : e)))
   .then(() => app.listen(PORT, () => console.log(`Cognita server يعمل على المنفذ ${PORT}`)))
