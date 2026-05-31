@@ -195,6 +195,7 @@ for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact"])
 app.get("/", (_q, res) => res.sendFile(path.join(PUB, "index.html")));
 
 init()
-  .then(seedAdmin)
+  // تهيئة حساب المشرف لا يجب أن تُسقط الخادم إن فشلت — نُسجّل تحذيراً ونُكمل
+  .then(() => seedAdmin().catch((e) => console.warn("⚠️ تعذّر تهيئة حساب المشرف:", e && (e.message || e.code) ? (e.message || e.code) : e)))
   .then(() => app.listen(PORT, () => console.log(`Cognita server يعمل على المنفذ ${PORT}`)))
   .catch((e) => { console.error("فشل تهيئة قاعدة البيانات:", e && (e.message || e.code) ? (e.message || e.code) : e); process.exit(1); });
