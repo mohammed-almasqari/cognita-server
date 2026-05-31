@@ -157,4 +157,4 @@ app.get("/", (_req, res) => res.sendFile(path.join(PUB, "index.html")));
 
 init()
   .then(() => app.listen(PORT, () => console.log(`Cognita server يعمل على المنفذ ${PORT}`)))
-  .catch((e) => { console.error("فشل تهيئة قاعدة البيانات:", e.message); process.exit(1); });
+  .catch((e) => { console.error("فشل تهيئة قاعدة البيانات:", e && (e.message || e.code) ? (e.message || e.code) : e); process.exit(1); });

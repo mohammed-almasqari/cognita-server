@@ -27,7 +27,7 @@ export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // تهيئة المخطّط تلقائياً عند الإقلاع
-export async function init() {
+async function createTables() {
   await q(`
     CREATE TABLE IF NOT EXISTS users (
       id          TEXT PRIMARY KEY,
@@ -68,5 +68,21 @@ export async function init() {
       created_at BIGINT NOT NULL
     );
   `);
-  console.log("✓ تم تهيئة قاعدة بيانات PostgreSQL");
+}
+
+// إعادة المحاولة عند الإقلاع لتحمّل تأخّر جاهزية قاعدة البيانات
+export async function init() {
+  const tries = Number(process.env.DB_INIT_RETRIES || 15);
+  for (let i = 1; i <= tries; i++) {
+    try {
+      await createTables();
+      console.log("✓ تم تهيئة قاعدة بيانات PostgreSQL");
+      return;
+    } catch (e) {
+      const msg = e && (e.message || e.code) ? (e.message || e.code) : String(e);
+      console.warn(`محاولة الاتصال بقاعدة البيانات ${i}/${tries} فشلت: ${msg}`);
+      if (i === tries) throw e;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
 }
