@@ -2,13 +2,16 @@
 const DEFAULTS = {
   name: "Cognita",
   tagline: "استوديو الذكاء الاصطناعي داخل متصفحك",
-  email: "support@cognita.example.com",
-  domain: "cognita.example.com",
-  copyright: "© 2026 Cognita. جميع الحقوق محفوظة.",
+  email: "support@dalilai.net",
+  domain: "cognita.dalilai.net",
+  copyright: "© 2026 Mohammed Almasqari — جميع الحقوق محفوظة.",
   x: "#", linkedin: "#",
 };
 
+const isLoggedIn = () => { try { return !!localStorage.getItem("cognita_token"); } catch { return false; } };
+
 function navHTML(b) {
+  const inApp = isLoggedIn();
   return `<div class="nav"><div class="wrap row">
     <a class="brand" href="/"><img src="/assets/icon.png" alt=""> ${b.name}</a>
     <div class="nav-links">
@@ -17,7 +20,7 @@ function navHTML(b) {
       <a href="/#how">كيف يعمل</a>
       <a href="/contact">تواصل</a>
     </div>
-    <a class="btn primary sm" href="/app">تسجيل الدخول</a>
+    <a class="btn primary sm" href="/app">${inApp ? "لوحة التحكم" : "تسجيل الدخول"}</a>
   </div></div>`;
 }
 function footerHTML(b) {
@@ -40,21 +43,24 @@ function footerHTML(b) {
   </div></div>`;
 }
 
+let BRAND = { ...DEFAULTS };
+function renderNav() { const nav = document.getElementById("site-nav"); if (nav) nav.innerHTML = navHTML(BRAND); }
+// تتيح للوحة العميل تحديث زر الترويسة فور تسجيل الدخول/الخروج
+window.cognitaRefreshNav = renderNav;
+
 (async function () {
-  let b = { ...DEFAULTS };
   try {
     const r = await fetch("/api/config");
     if (r.ok) {
       const c = await r.json();
-      b = {
-        ...b, name: c.brand.name, tagline: c.brand.tagline, email: c.brand.email,
+      BRAND = {
+        ...BRAND, name: c.brand.name, tagline: c.brand.tagline, email: c.brand.email,
         domain: c.brand.domain, copyright: c.brand.copyright,
         x: c.brand.social?.x || "#", linkedin: c.brand.social?.linkedin || "#",
       };
     }
   } catch {}
-  const nav = document.getElementById("site-nav");
+  renderNav();
   const foot = document.getElementById("site-footer");
-  if (nav) nav.innerHTML = navHTML(b);
-  if (foot) foot.innerHTML = footerHTML(b);
+  if (foot) foot.innerHTML = footerHTML(BRAND);
 })();

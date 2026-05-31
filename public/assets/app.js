@@ -11,7 +11,11 @@ async function api(method, path, body) {
   const r = await fetch(path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "خطأ"); return d;
 }
-const show = (inApp) => { $("auth").style.display = inApp ? "none" : "block"; $("account").style.display = inApp ? "block" : "none"; };
+const show = (inApp) => {
+  $("auth").style.display = inApp ? "none" : "block";
+  $("account").style.display = inApp ? "block" : "none";
+  if (window.cognitaRefreshNav) window.cognitaRefreshNav(); // حدّث زر الترويسة العام حسب حالة الدخول
+};
 const dt = (ms) => ms ? new Date(+ms).toLocaleDateString("ar", { year: "numeric", month: "long", day: "numeric" }) : "—";
 const money = (a, c) => `${a} ${c || ""}`;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
