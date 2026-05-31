@@ -17,7 +17,8 @@
   <p>هندسة البرومبت متعددة النماذج، وتوجيه الوكلاء الذكيين، وتحويل أفكارك إلى استعلامات بحثية احترافية — أداة واحدة تعمل أينما كنت على الويب.</p>
   <div class="cta">
     <a class="btn primary" href="/pricing">⬇ ابدأ الآن</a>
-    <a class="btn ghost" href="#how">شاهد كيف يعمل</a>
+    <a class="btn ghost" href="/cognita-guide.pdf" download>📄 دليل التثبيت PDF</a>
+    <a class="btn ghost" href="#how">كيف يعمل</a>
   </div>
   <div class="sub">يعمل على Chrome · Edge · Brave (الإصدار 116+)</div>
 </div></header>
@@ -69,8 +70,8 @@
     </div>
     <div class="price pro">
       <div class="pname">Pro</div>
-      <div class="pamt">29 <small>ريال/شهر</small></div>
-      <div class="cyc">أو 290 ريال سنوياً · 749 مدى الحياة</div>
+      <div class="pamt"><span id="p-monthly">29</span> <small>ريال/شهر</small></div>
+      <div class="cyc">أو <span id="p-annual">290</span> سنوياً · <span id="p-life">749</span> مدى الحياة</div>
       <ul>
         <li><span class="ck">✓</span> كل مزايا المجاني</li>
         <li><span class="ck">✓</span> التحسين بالذكاء الاصطناعي</li>
@@ -96,5 +97,13 @@
 
 <div id="site-footer"></div>
 <script src="/assets/site.js"></script>
+<script>
+fetch('/api/config').then(r=>r.json()).then(c=>{
+  const pro=c.pricing&&c.pricing.plans&&c.pricing.plans.pro;
+  if(!pro) return;
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('p-monthly',pro.monthly); set('p-annual',pro.annual); set('p-life',pro.lifetime);
+}).catch(()=>{});
+</script>
 </body>
 </html>

@@ -1,123 +1,74 @@
-// app.js — منطق لوحة التحكم
+// app.js — لوحة تحكم العميل
 const $ = (id) => document.getElementById(id);
 const tk = "cognita_token";
 let token = localStorage.getItem(tk) || "";
 let CFG = null;
 
-function msg(t, kind = "ok") {
-  const m = $("msg"); m.textContent = t; m.className = "msg " + kind;
-  m.scrollIntoView({ block: "nearest" });
-  setTimeout(() => (m.className = "msg"), 4500);
-}
-async function jget(p) {
-  const r = await fetch(p, { headers: token ? { Authorization: "Bearer " + token } : {} });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || "حدث خطأ");
-  return d;
-}
-async function jpost(p, body, admin) {
+function msg(t, k = "ok") { const m = $("msg"); m.textContent = t; m.className = "msg " + k; m.scrollIntoView({ block: "nearest" }); setTimeout(() => (m.className = "msg"), 4500); }
+async function api(method, path, body) {
   const h = { "Content-Type": "application/json" };
   if (token) h.Authorization = "Bearer " + token;
-  if (admin) h["x-admin-token"] = $("admin-token").value;
-  const r = await fetch(p, { method: "POST", headers: h, body: JSON.stringify(body || {}) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || "حدث خطأ");
-  return d;
+  const r = await fetch(path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "خطأ"); return d;
 }
-const show = (loggedIn) => {
-  $("auth").style.display = loggedIn ? "none" : "block";
-  $("account").style.display = loggedIn ? "block" : "none";
-};
+const show = (inApp) => { $("auth").style.display = inApp ? "none" : "block"; $("account").style.display = inApp ? "block" : "none"; };
+const dt = (ms) => ms ? new Date(+ms).toLocaleDateString("ar") : "—";
+const money = (a, c) => `${a} ${c || ""}`;
 
 async function loadConfig() {
-  try { CFG = await jget("/api/config"); } catch { CFG = null; }
-  renderPayBox();
-}
-function renderPayBox() {
-  const box = $("pay-instructions");
-  if (!CFG) { box.textContent = "تواصل معنا لتعليمات الدفع."; return; }
-  const m = (CFG.payment.methods || []).map(
-    (x) => `<div style="margin-bottom:8px"><b>${x.title}</b><br>${(x.details || []).join("<br>")}</div>`
-  ).join("");
-  box.innerHTML = m + `<div class="muted small" style="margin-top:6px">${CFG.payment.instructions || ""}</div>`;
-}
-function amountFor(cycle) {
-  const p = CFG?.pricing?.plans?.pro || { monthly: 29, annual: 290, lifetime: 749 };
+  try { CFG = await api("GET", "/api/config"); } catch { CFG = null; }
+  const pro = CFG?.pricing?.plans?.pro || { monthly: 29, annual: 290, lifetime: 749 };
   const cur = CFG?.pricing?.currencyLabel || "ريال";
-  const v = p[cycle] ?? p.monthly;
-  return `${v} ${cur}`;
+  $("cycle").innerHTML = [
+    ["monthly", `شهري — ${pro.monthly} ${cur}`], ["annual", `سنوي — ${pro.annual} ${cur}`], ["lifetime", `مدى الحياة — ${pro.lifetime} ${cur}`],
+  ].map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
 }
 
 async function loadAccount() {
   try {
-    const { user, entitlement } = await jget("/api/me");
+    const { user, entitlement } = await api("GET", "/api/me");
     $("u-email").textContent = user.email;
     $("u-plan").innerHTML = `<span class="pill ${entitlement.plan}">${entitlement.plan === "pro" ? "Pro ✦" : "مجاني"}</span>`;
-    $("u-exp").textContent = entitlement.expiresAt ? new Date(entitlement.expiresAt).toLocaleDateString("ar") : "—";
-    show(true);
-  } catch {
-    token = ""; localStorage.removeItem(tk); show(false);
-  }
+    $("u-exp").textContent = dt(entitlement.expiresAt);
+    if (user.licenseKey) { $("u-key").textContent = user.licenseKey; $("copy-key").style.display = "inline-flex"; }
+    else { $("u-key").textContent = "—"; $("copy-key").style.display = "none"; }
+    show(true); loadInvoices();
+  } catch { token = ""; localStorage.removeItem(tk); show(false); }
 }
 
-// مصادقة
-$("login").onclick = async () => {
-  try { const d = await jpost("/api/auth/login", { email: $("email").value.trim(), password: $("password").value });
-    token = d.token; localStorage.setItem(tk, token); msg("تم تسجيل الدخول ✓"); loadAccount();
-  } catch (e) { msg(e.message, "err"); }
-};
-$("register").onclick = async () => {
-  try { const d = await jpost("/api/auth/register", { email: $("email").value.trim(), password: $("password").value });
-    token = d.token; localStorage.setItem(tk, token); msg("تم إنشاء الحساب ✓"); loadAccount();
-  } catch (e) { msg(e.message, "err"); }
-};
+async function loadInvoices() {
+  try {
+    const { invoices } = await api("GET", "/api/invoices/mine");
+    $("invoices").innerHTML = invoices.length ? `<table class="t"><tr><th>رقم</th><th>النوع</th><th>الباقة</th><th>المبلغ</th><th>الحالة</th><th>المفتاح</th></tr>` +
+      invoices.map((v) => `<tr><td>${v.number}</td><td>${v.type === "renewal" ? "تجديد" : "اشتراك"}</td>
+        <td>${v.plan}/${v.cycle}</td><td>${money(v.amount, v.currency)}</td>
+        <td><span class="pill ${v.status === "paid" ? "fulfilled" : v.status === "canceled" ? "free" : "pending"}">${v.status === "paid" ? "مدفوعة" : v.status === "canceled" ? "ملغاة" : "معلّقة"}</span></td>
+        <td>${v.issued_key ? `<code>${v.issued_key}</code>` : "—"}</td></tr>`).join("") + `</table>` : `<p class="muted small">لا فواتير بعد.</p>`;
+  } catch (e) { $("invoices").innerHTML = `<p class="muted small">—</p>`; }
+}
+
+function showPay(invoice, payment) {
+  const p = payment || CFG?.payment || {};
+  $("pay").style.display = "block";
+  $("pay").innerHTML = `<b>فاتورة ${invoice.number} — ${money(invoice.amount, invoice.currency)}</b>
+    <pre style="white-space:pre-wrap;margin:8px 0;direction:rtl">${p.bankDetails || ""}</pre>
+    <div class="muted small">${p.instructions || ""}</div>
+    <label style="margin-top:8px">مرجع عملية التحويل</label>
+    <input id="ref" placeholder="رقم الحوالة">
+    <button class="btn primary sm" id="send-ref">إرسال المرجع</button>`;
+  $("send-ref").onclick = async () => {
+    try { await api("POST", `/api/invoices/${invoice.id}/reference`, { reference: $("ref").value.trim() }); msg("تم إرسال المرجع ✓ — سنراجع ونُصدر المفتاح"); loadInvoices(); }
+    catch (e) { msg(e.message, "err"); }
+  };
+}
+
+$("login").onclick = async () => { try { const d = await api("POST", "/api/auth/login", { email: $("email").value.trim(), password: $("password").value }); token = d.token; localStorage.setItem(tk, token); msg("تم الدخول ✓"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
+$("register").onclick = async () => { try { const d = await api("POST", "/api/auth/register", { email: $("email").value.trim(), password: $("password").value }); token = d.token; localStorage.setItem(tk, token); msg("تم إنشاء الحساب ✓"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
 $("logout").onclick = () => { token = ""; localStorage.removeItem(tk); show(false); };
+$("copy-key").onclick = () => { navigator.clipboard.writeText($("u-key").textContent).then(() => msg("نُسخ المفتاح ✓")); };
+$("activate").onclick = async () => { try { await api("POST", "/api/license/activate", { key: $("license").value.trim() }); msg("تم التفعيل ✓"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
+$("order").onclick = async () => { try { const d = await api("POST", "/api/orders", { cycle: $("cycle").value }); msg("أُنشئت الفاتورة — أكمل الدفع"); showPay(d.invoice, d.payment); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+$("renew").onclick = async () => { try { const d = await api("POST", "/api/subscription/renew", { cycle: $("cycle").value }); msg("أُنشئت فاتورة تجديد"); showPay(d.invoice, d.payment); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
 
-// ترخيص
-$("activate").onclick = async () => {
-  try { await jpost("/api/license/activate", { key: $("license").value.trim() });
-    msg("تم تفعيل الترخيص ✓ — مرحباً بك في Pro"); loadAccount();
-  } catch (e) { msg(e.message, "err"); }
-};
-
-// طلب ترقية
-$("cycle").onchange = () => {};
-$("order").onclick = async () => {
-  try {
-    const cycle = $("cycle").value;
-    await jpost("/api/orders", { plan: "pro", cycle, amount: amountFor(cycle), reference: $("ref").value.trim(), note: $("note").value.trim() });
-    msg("تم إرسال طلب الترقية ✓ — سنُصدر مفتاحك خلال 24 ساعة");
-    $("ref").value = ""; $("note").value = "";
-  } catch (e) { msg(e.message, "err"); }
-};
-
-// المشرف
-$("gen").onclick = async () => {
-  try { const d = await jpost("/api/admin/licenses", { tier: "pro", days: Number($("g-days").value) || 365, count: Number($("g-count").value) || 1 }, true);
-    $("keys").style.display = "block"; $("keys").textContent = d.keys.join("\n"); msg(`تم توليد ${d.keys.length} مفتاح`);
-  } catch (e) { msg(e.message, "err"); }
-};
-$("load-reqs").onclick = async () => {
-  try {
-    const r = await fetch("/api/admin/requests", { headers: { "x-admin-token": $("admin-token").value } });
-    const d = await r.json(); if (!r.ok) throw new Error(d.error || "خطأ");
-    const rows = (d.requests || []).map((x) => `<tr>
-      <td>${x.email || "-"}</td><td>${x.cycle || "-"}</td><td>${x.amount || "-"}</td>
-      <td>${x.reference || "-"}</td>
-      <td><span class="pill ${x.status}">${x.status === "fulfilled" ? "مُنفّذ" : "معلّق"}</span></td>
-      <td>${x.issued_key ? `<code>${x.issued_key}</code>` : `<button class="btn sm" data-fid="${x.id}">إصدار مفتاح</button>`}</td>
-    </tr>`).join("");
-    $("reqs").innerHTML = rows
-      ? `<table class="t"><tr><th>البريد</th><th>الخطة</th><th>المبلغ</th><th>المرجع</th><th>الحالة</th><th>إجراء</th></tr>${rows}</table>`
-      : `<p class="muted small">لا طلبات.</p>`;
-    document.querySelectorAll("[data-fid]").forEach((b) => (b.onclick = async () => {
-      try { const f = await jpost(`/api/admin/requests/${b.dataset.fid}/fulfill`, { days: 365 }, true);
-        msg(`تم إصدار المفتاح ${f.key} — أرسله للعميل`); $("load-reqs").click();
-      } catch (e) { msg(e.message, "err"); }
-    }));
-  } catch (e) { msg(e.message, "err"); }
-};
-
-// إقلاع
 loadConfig();
 if (token) loadAccount(); else show(false);

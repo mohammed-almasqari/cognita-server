@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة الأدمن — Cognita</title>
+<link rel="icon" href="/assets/favicon.png">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+  .adm-head{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+  .adm-brand{display:flex;align-items:center;gap:10px;font-weight:700}
+  .adm-brand img{width:32px;height:32px;border-radius:8px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}
+  @media(max-width:760px){.stats{grid-template-columns:1fr 1fr}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .stat .v{font-size:26px;font-weight:700}.stat .k{font-size:12.5px;color:var(--muted)}
+  .seg{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px}
+  .seg button{background:var(--bg2);border:1px solid var(--line);color:var(--ink2);border-radius:9px;padding:8px 15px;font-family:inherit;font-weight:600;font-size:13.5px;cursor:pointer}
+  .seg button.on{background:var(--grad);color:#fff;border-color:transparent}
+  .panel{display:none}.panel.on{display:block}
+</style>
+</head>
+<body>
+<div class="dash" style="max-width:1000px">
+  <div class="adm-head">
+    <div class="adm-brand"><img src="/assets/icon.png" alt=""> لوحة الأدمن · Cognita</div>
+    <a class="btn ghost sm" href="/">→ الموقع</a>
+  </div>
+  <div id="msg" class="msg"></div>
+
+  <!-- دخول -->
+  <div id="login" class="dcard" style="max-width:420px;margin:30px auto;display:none">
+    <h3>دخول المشرف</h3>
+    <label>البريد</label><input id="email" type="email" placeholder="admin@example.com">
+    <label>كلمة المرور</label><input id="password" type="password">
+    <button class="btn primary block" id="btn-login">دخول</button>
+    <p class="muted small" style="margin-top:10px">يُنشأ حساب المشرف من متغيّري البيئة ADMIN_EMAIL و ADMIN_PASSWORD.</p>
+  </div>
+
+  <!-- التطبيق -->
+  <div id="app" style="display:none">
+    <div class="stats" id="stats"></div>
+    <div class="seg" id="seg">
+      <button data-p="customers" class="on">العملاء</button>
+      <button data-p="invoices">الفواتير</button>
+      <button data-p="settings">الباقات والمحتوى</button>
+      <button data-p="keys">توليد مفاتيح</button>
+    </div>
+
+    <div class="panel on" id="p-customers"><div class="dcard"><h3>العملاء</h3><div id="customers"></div></div></div>
+
+    <div class="panel" id="p-invoices"><div class="dcard"><h3>الفواتير</h3><div id="invoices"></div></div></div>
+
+    <div class="panel" id="p-settings"><div class="dcard"><h3>الباقات ومحتوى الصفحة الرئيسية</h3>
+      <div class="dgrid">
+        <div><label>اسم العلامة</label><input id="s-name"></div>
+        <div><label>الشعار (tagline)</label><input id="s-tagline"></div>
+        <div><label>النطاق</label><input id="s-domain"></div>
+        <div><label>البريد الرسمي</label><input id="s-email"></div>
+        <div><label>الهاتف</label><input id="s-phone"></div>
+        <div><label>رمز العملة</label><input id="s-currency" placeholder="ريال"></div>
+        <div><label>سعر Pro شهري</label><input id="s-monthly" type="number"></div>
+        <div><label>سعر Pro سنوي</label><input id="s-annual" type="number"></div>
+        <div><label>سعر مدى الحياة</label><input id="s-lifetime" type="number"></div>
+      </div>
+      <label>بيانات التحويل البنكي</label><textarea id="s-bank" rows="4"></textarea>
+      <label>تعليمات الدفع</label><textarea id="s-instructions" rows="2"></textarea>
+      <button class="btn primary" id="save-settings">حفظ المحتوى والأسعار</button>
+    </div></div>
+
+    <div class="panel" id="p-keys"><div class="dcard"><h3>توليد مفاتيح ترخيص</h3>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px"><label>المدة (يوم)</label><input id="g-days" type="number" placeholder="365"></div>
+        <div style="flex:1;min-width:120px"><label>العدد</label><input id="g-count" type="number" placeholder="5"></div>
+      </div>
+      <button class="btn" id="gen">توليد Pro</button>
+      <div id="keys" class="keylist" style="display:none"></div>
+    </div></div>
+  </div>
+</div>
+<script src="/assets/admin.js"></script>
+</body>
+</html>
