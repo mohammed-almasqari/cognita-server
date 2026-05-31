@@ -27,7 +27,7 @@ function footerHTML(b) {
         <div class="brand"><img src="/assets/icon.png" style="width:30px;height:30px;border-radius:8px" alt=""> ${b.name}</div>
         <p class="muted" style="margin-top:10px">${b.tagline}</p>
       </div>
-      <div><h4>المنتج</h4><a href="/#features">المميزات</a><a href="/pricing">الأسعار</a><a href="/app">لوحة التحكم</a></div>
+      <div><h4>المنتج</h4><a href="/#features">المميزات</a><a href="/pricing">الأسعار</a><a href="/app">لوحة التحكم</a><a href="/docs">توثيق API</a></div>
       <div><h4>قانوني</h4><a href="/privacy">سياسة الخصوصية</a><a href="/terms">الشروط والأحكام</a></div>
       <div><h4>تواصل</h4>
         <a href="mailto:${b.email}">${b.email}</a>

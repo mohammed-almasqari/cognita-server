@@ -220,7 +220,7 @@ app.post("/api/admin/licenses", adminAuth, ah(async (req, res) => {
 }));
 
 // ===== صفحات الموقع =====
-for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact"])
+for (const p of ["app", "admin", "pricing", "privacy", "terms", "contact", "docs"])
   app.get("/" + p, (_q, res) => res.sendFile(path.join(PUB, p + ".html")));
 app.get("/", (_q, res) => res.sendFile(path.join(PUB, "index.html")));
 

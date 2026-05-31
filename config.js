@@ -4,16 +4,18 @@
 export const BRAND = {
   name: "Cognita",
   tagline: "استوديو الذكاء الاصطناعي داخل متصفحك",
-  domain: "cognita.example.com",          // ← نطاقك
-  email: "support@cognita.example.com",    // ← بريدك الرسمي
-  salesEmail: "sales@cognita.example.com",
-  phone: "+966 5X XXX XXXX",               // ← رقم التواصل
-  company: "«اسم الشركة / المؤسسة»",       // ← الكيان القانوني
+  domain: "cognita.dalilai.net",
+  url: "https://cognita.dalilai.net",
+  email: "support@dalilai.net",            // البريد الرسمي للدعم
+  salesEmail: "sales@dalilai.net",
+  phone: "+966 5X XXX XXXX",               // ← حدّث رقمك إن رغبت
+  owner: "Mohammed Almasqari",
+  company: "Mohammed Almasqari",
   social: {
-    x: "https://x.com/your_handle",
-    linkedin: "https://linkedin.com/company/your_company",
+    x: "https://x.com/your_handle",        // ← حدّث روابطك
+    linkedin: "https://linkedin.com/in/your_handle",
   },
-  copyright: "© 2026 Cognita. جميع الحقوق محفوظة.",
+  copyright: "© 2026 Mohammed Almasqari — جميع الحقوق محفوظة.",
 };
 
 // التسعير بالريال السعودي (قابل للتعديل).

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>توثيق API — Cognita</title>
+<meta name="description" content="توثيق واجهة Cognita البرمجية: المصادقة، الترخيص، والمزامنة لمستخدمي Pro والمطوّرين.">
+<link rel="icon" href="/assets/favicon.png">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+  .doc{max-width:920px;margin:0 auto;padding:30px 6vw 60px}
+  .doc h1{font-size:26px;margin-bottom:6px}
+  .ep{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .ep .m{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;margin-inline-end:8px}
+  .m.get{background:var(--search-bg);color:#0a7a55}.m.post{background:var(--prompt-bg);color:#4f46e5}
+  .ep code.path{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--ink);direction:ltr}
+  .ep p{font-size:14px;margin:8px 0}
+  pre{background:#0b1020;color:#e6ebf7;border-radius:10px;padding:14px;overflow-x:auto;font-size:12.5px;direction:ltr;text-align:left;line-height:1.6;font-family:"IBM Plex Mono",monospace}
+  .pill.pro{background:var(--grad);color:#fff;font-size:10px;padding:2px 8px;border-radius:100px}
+  h2.s{font-size:19px;margin:30px 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  .tbl2{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+  .tbl2 th,.tbl2 td{border:1px solid var(--line);padding:8px 10px;text-align:right}
+  .tbl2 th{background:var(--bg2);color:var(--ink2)}
+</style>
+</head>
+<body>
+<div id="site-nav"></div>
+<div class="doc">
+  <h1>توثيق واجهة Cognita البرمجية (API)</h1>
+  <p class="muted">للمطوّرين ومستخدمي <span class="pill pro">Pro</span> الراغبين في الدمج البرمجي مع حساباتهم وتراخيصهم ومزامنة بياناتهم.</p>
+
+  <h2 class="s">الأساسيات</h2>
+  <p><b>الرابط الأساسي (Base URL):</b> <code class="path">https://cognita.dalilai.net</code></p>
+  <p><b>المصادقة:</b> أرسِل رمز JWT في الترويسة <code>Authorization: Bearer &lt;token&gt;</code> (تحصل عليه من تسجيل الدخول). صلاحية الرمز 30 يوماً.</p>
+  <p><b>الصيغة:</b> كل الطلبات والردود بصيغة JSON. الأخطاء ترجع <code>{ "error": "الرسالة" }</code> مع رمز HTTP مناسب.</p>
+
+  <h2 class="s">١) المصادقة</h2>
+  <div class="ep">
+    <span class="m post">POST</span><code class="path">/api/auth/register</code>
+    <p>إنشاء حساب جديد.</p>
+    <pre>curl -X POST https://cognita.dalilai.net/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"secret123"}'
+
+→ { "token": "JWT...", "user": { "id":"...","email":"...","plan":"free" } }</pre>
+  </div>
+  <div class="ep">
+    <span class="m post">POST</span><code class="path">/api/auth/login</code>
+    <p>تسجيل الدخول والحصول على الرمز.</p>
+    <pre>curl -X POST https://cognita.dalilai.net/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"secret123"}'
+
+→ { "token": "JWT...", "user": { ... } }</pre>
+  </div>
+
+  <h2 class="s">٢) الحساب والصلاحية</h2>
+  <div class="ep">
+    <span class="m get">GET</span><code class="path">/api/me</code>
+    <p>بيانات الحساب وصلاحيته (الخطة والميزات وتاريخ الانتهاء).</p>
+    <pre>curl https://cognita.dalilai.net/api/me \
+  -H "Authorization: Bearer JWT..."
+
+→ {
+  "user": { "email":"...", "plan":"pro", "expiresAt": 1790000000000 },
+  "entitlement": {
+    "plan": "pro",
+    "features": { "aiOptimize":true, "agentRun":true, "autoSearchMulti":true, "cloudSync":true },
+    "valid": true
+  }
+}</pre>
+  </div>
+  <div class="ep">
+    <span class="m get">GET</span><code class="path">/api/license/validate</code>
+    <p>التحقّق السريع من حالة الترخيص (يُستخدم للتأكد من صلاحية Pro).</p>
+    <pre>→ { "plan":"pro", "features": {...}, "expiresAt": 1790000000000, "valid": true }</pre>
+  </div>
+  <div class="ep">
+    <span class="m post">POST</span><code class="path">/api/license/activate</code>
+    <p>تفعيل مفتاح ترخيص على الحساب.</p>
+    <pre>-d '{"key":"COG-XXXX-XXXX-XXXX"}' → { "plan":"pro", ... }</pre>
+  </div>
+
+  <h2 class="s">٣) المزامنة السحابية <span class="pill pro">Pro</span></h2>
+  <p>متاحة لمستخدمي Pro فقط — ترجع <code>403</code> لغيرهم.</p>
+  <div class="ep">
+    <span class="m post">POST</span><code class="path">/api/sync/push</code>
+    <p>رفع مكتبة المستخدم (البرومبت/السلاسل/عمليات البحث).</p>
+    <pre>-d '{"prompts":[...],"flows":[...],"searches":[...]}' → { "ok": true }</pre>
+  </div>
+  <div class="ep">
+    <span class="m get">GET</span><code class="path">/api/sync/pull</code>
+    <p>جلب مكتبة المستخدم المخزّنة سحابياً.</p>
+    <pre>→ { "prompts":[...], "flows":[...], "searches":[...] }</pre>
+  </div>
+
+  <h2 class="s">٤) الفوترة</h2>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/orders</code><p>إنشاء فاتورة اشتراك. <code>{plan,cycle}</code></p></div>
+  <div class="ep"><span class="m post">POST</span><code class="path">/api/subscription/renew</code><p>إنشاء فاتورة تجديد.</p></div>
+  <div class="ep"><span class="m get">GET</span><code class="path">/api/invoices/mine</code><p>قائمة فواتير المستخدم.</p></div>
+
+  <h2 class="s">رموز الأخطاء</h2>
+  <table class="tbl2">
+    <tr><th>الرمز</th><th>المعنى</th></tr>
+    <tr><td>400</td><td>طلب غير صالح (بيانات ناقصة)</td></tr>
+    <tr><td>401</td><td>غير مُصرّح (رمز مفقود/منتهٍ)</td></tr>
+    <tr><td>403</td><td>ممنوع (ميزة Pro أو صلاحية مشرف)</td></tr>
+    <tr><td>404</td><td>غير موجود</td></tr>
+    <tr><td>500</td><td>خطأ في الخادم</td></tr>
+  </table>
+
+  <p class="muted small" style="margin-top:24px">للاستفسارات البرمجية: <a href="mailto:support@dalilai.net">support@dalilai.net</a> · © 2026 Mohammed Almasqari</p>
+</div>
+<div id="site-footer"></div>
+<script src="/assets/site.js"></script>
+</body>
+</html>
