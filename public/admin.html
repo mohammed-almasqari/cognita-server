@@ -93,6 +93,7 @@
     <div class="navlink" data-p="customers"><span class="i">👥</span> العملاء</div>
     <div class="navlink" data-p="invoices"><span class="i">🧾</span> الفواتير</div>
     <div class="navlink" data-p="settings"><span class="i">⚙️</span> الباقات والمحتوى</div>
+    <div class="navlink" data-p="payment"><span class="i">💳</span> إعدادات الدفع</div>
     <div class="navlink" data-p="proxy"><span class="i">🤖</span> وكيل النماذج</div>
     <div class="navlink" data-p="keys"><span class="i">🔑</span> توليد مفاتيح</div>
     <div class="spacer"></div>
@@ -159,9 +160,31 @@
         <div><label>سعر Pro سنوي</label><input id="s-annual" type="number"></div>
         <div><label>سعر مدى الحياة</label><input id="s-lifetime" type="number"></div>
       </div>
-      <label>بيانات التحويل البنكي</label><textarea id="s-bank" rows="4"></textarea>
-      <label>تعليمات الدفع</label><textarea id="s-instructions" rows="2"></textarea>
       <button class="btn primary" id="save-settings">حفظ المحتوى والأسعار</button>
+    </div></div>
+
+    <!-- إعدادات الدفع -->
+    <div class="panel" id="p-payment"><div class="dcard">
+      <h3>طرق الدفع</h3>
+      <p class="muted small">فعّل طرق الدفع المتاحة لعملائك. PayPal تلقائي ويُصدر المفتاح فور الدفع؛ التحويل البنكي يدوي بمراجعتك.</p>
+
+      <h4 style="margin:14px 0 6px">التحويل البنكي</h4>
+      <label class="chk" style="display:inline-flex;align-items:center;gap:6px;margin:4px 0"><input type="checkbox" id="pay-bank-enabled" style="width:auto"> تفعيل الدفع بالتحويل البنكي (مع إرفاق الإيصال)</label>
+      <label>بيانات التحويل البنكي</label><textarea id="pay-bank" rows="4" placeholder="اسم المستفيد، البنك، IBAN، STC Pay…"></textarea>
+      <label>تعليمات الدفع</label><textarea id="pay-instructions" rows="2"></textarea>
+
+      <hr class="sep">
+      <h4 style="margin:0 0 6px">PayPal</h4>
+      <p class="muted small">أدخِل مفاتيح تطبيق PayPal (REST). تبقى سرّية في الخادم ولا تظهر في الموقع. ملاحظة: قد لا يدعم PayPal الريال (SAR)، فاضبط عملة PayPal ومُعامل التحويل من الريال.</p>
+      <label class="chk" style="display:inline-flex;align-items:center;gap:6px;margin:4px 0"><input type="checkbox" id="pp-enabled" style="width:auto"> تفعيل الدفع عبر PayPal</label>
+      <div class="dgrid">
+        <div><label>الوضع</label><select id="pp-mode"><option value="live">مباشر (Live)</option><option value="sandbox">تجريبي (Sandbox)</option></select></div>
+        <div><label>عملة PayPal</label><input id="pp-currency" placeholder="USD"></div>
+        <div><label>Client ID</label><input id="pp-client" placeholder="AY..."></div>
+        <div><label>معامل التحويل من الريال (1 ريال = ؟ بعملة PayPal)</label><input id="pp-rate" type="number" step="0.0001" placeholder="0.27"></div>
+      </div>
+      <label>Secret</label><input id="pp-secret" type="password" placeholder="EL...">
+      <button class="btn primary" id="pay-save">حفظ إعدادات الدفع</button>
     </div></div>
 
     <!-- وكيل النماذج -->

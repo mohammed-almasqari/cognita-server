@@ -31,7 +31,7 @@ $("btn-login").onclick = async () => {
 $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-login").click(); });
 
 // ===== التنقّل (الشريط الجانبي) =====
-const TITLES = { dashboard: "لوحة المعلومات", customers: "العملاء", invoices: "الفواتير", settings: "الباقات والمحتوى", proxy: "وكيل النماذج", keys: "توليد مفاتيح" };
+const TITLES = { dashboard: "لوحة المعلومات", customers: "العملاء", invoices: "الفواتير", settings: "الباقات والمحتوى", payment: "إعدادات الدفع", proxy: "وكيل النماذج", keys: "توليد مفاتيح" };
 function closeDrawer() { $("side").classList.remove("open"); $("scrim").classList.remove("show"); }
 document.querySelectorAll(".navlink[data-p]").forEach((b) => (b.onclick = () => {
   const p = b.dataset.p;
@@ -131,6 +131,7 @@ function renderInvoices(list) {
       <td data-label="الحالة">${invStatusPill(v.status)}</td>
       <td data-label="إجراء" style="white-space:nowrap">
         ${v.status === "unpaid" ? `<button class="btn sm" data-pay="${v.id}">تأكيد الدفع</button> <button class="btn sm ghost" data-cancel="${v.id}">إلغاء</button> ` : v.issued_key ? `<code>${esc(v.issued_key)}</code> ` : ""}
+        ${v.has_receipt ? `<button class="btn sm ghost" data-receipt="${v.id}">عرض الإيصال</button> ` : ""}
         <button class="btn sm ghost" data-pdf="${v.id}">PDF</button>
       </td>
     </tr>`).join("") + `</table>` : `<p class="muted small">لا فواتير.</p>`;
@@ -142,6 +143,13 @@ function renderInvoices(list) {
   });
   $("invoices").querySelectorAll("[data-pdf]").forEach((b) => b.onclick = () => {
     const inv = INVOICES.find((x) => x.id === b.dataset.pdf); if (inv) printInvoice(inv);
+  });
+  $("invoices").querySelectorAll("[data-receipt]").forEach((b) => b.onclick = async () => {
+    try {
+      const r = await fetch(`/api/admin/invoices/${b.dataset.receipt}/receipt`, { headers: { Authorization: "Bearer " + token } });
+      if (!r.ok) throw new Error("لا إيصال");
+      window.open(URL.createObjectURL(await r.blob()), "_blank");
+    } catch { msg("تعذّر عرض الإيصال", "err"); }
   });
 }
 async function loadInvoices() {
@@ -211,7 +219,17 @@ async function loadSettings() {
   $("s-currency").value = c.pricing.currencyLabel || "ريال";
   const pro = c.pricing.plans?.pro || {};
   $("s-monthly").value = pro.monthly ?? ""; $("s-annual").value = pro.annual ?? ""; $("s-lifetime").value = pro.lifetime ?? "";
-  $("s-bank").value = c.payment.bankDetails || ""; $("s-instructions").value = c.payment.instructions || "";
+  // إعدادات الدفع
+  const pay = c.payment || {};
+  $("pay-bank-enabled").checked = pay.bankEnabled !== false;
+  $("pay-bank").value = pay.bankDetails || ""; $("pay-instructions").value = pay.instructions || "";
+  const pp = pay.paypal || {};
+  $("pp-enabled").checked = !!pp.enabled;
+  $("pp-mode").value = pp.mode === "sandbox" ? "sandbox" : "live";
+  $("pp-currency").value = pp.currency || "USD";
+  $("pp-client").value = pp.clientId || "";
+  $("pp-rate").value = pp.rate ?? 1;
+  $("pp-secret").value = pp.secret || "";
   const px = c.proxy || {};
   $("px-enabled").checked = px.enabled !== false;
   $("px-default").value = px.defaultProvider || "openai";
@@ -245,9 +263,23 @@ $("save-settings").onclick = async () => {
     await api("POST", "/api/admin/settings", {
       brand: { name: $("s-name").value, tagline: $("s-tagline").value, domain: $("s-domain").value, email: $("s-email").value, phone: $("s-phone").value },
       pricing: { currencyLabel: $("s-currency").value, plans: { free: { name: "مجاني", monthly: 0, annual: 0, lifetime: 0 }, pro: { name: "Pro", monthly: +$("s-monthly").value || 0, annual: +$("s-annual").value || 0, lifetime: +$("s-lifetime").value || 0 } } },
-      payment: { bankDetails: $("s-bank").value, instructions: $("s-instructions").value },
     });
     msg("تم حفظ المحتوى والأسعار ✓"); CFG = await api("GET", "/api/config").catch(() => CFG);
+  } catch (e) { msg(e.message, "err"); }
+};
+
+$("pay-save").onclick = async () => {
+  try {
+    await api("POST", "/api/admin/settings", { payment: {
+      bankEnabled: $("pay-bank-enabled").checked,
+      bankDetails: $("pay-bank").value, instructions: $("pay-instructions").value,
+      paypal: {
+        enabled: $("pp-enabled").checked, mode: $("pp-mode").value,
+        currency: $("pp-currency").value.trim() || "USD", clientId: $("pp-client").value.trim(),
+        rate: +$("pp-rate").value || 1, secret: $("pp-secret").value,
+      },
+    }});
+    msg("تم حفظ إعدادات الدفع ✓"); loadSettings(); CFG = await api("GET", "/api/config").catch(() => CFG);
   } catch (e) { msg(e.message, "err"); }
 };
 

@@ -48,6 +48,8 @@ async function createTables() {
       reference TEXT, note TEXT, status TEXT NOT NULL DEFAULT 'unpaid',
       issued_key TEXT, created_at BIGINT NOT NULL, paid_at BIGINT
     );
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pp_order_id TEXT;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt TEXT;
 
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY DEFAULT 1, data JSONB NOT NULL DEFAULT '{}'

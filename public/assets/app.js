@@ -111,22 +111,61 @@ async function loadInvoices() {
         </div>
         <div class="inv-actions">
           <button class="btn sm ghost" data-pdf="${v.id}">⬇ فاتورة PDF</button>
-          ${v.status === "unpaid" ? `<input data-ref="${v.id}" placeholder="مرجع التحويل"><button class="btn sm" data-sendref="${v.id}">إرسال المرجع</button>` : ""}
         </div>
+        ${v.status === "unpaid" ? payMethodsHtml(v) : ""}
         ${v.issued_key ? `<div class="keychip"><span>${esc(v.issued_key)}</span><button class="btn sm ghost" data-copy="${esc(v.issued_key)}">نسخ</button></div>` : ""}
       </div>`).join("") + `</div>`;
     // ربط الإجراءات
     $("invoices").querySelectorAll("[data-pdf]").forEach((b) => b.onclick = () => { const v = INVOICES.find((x) => x.id === b.dataset.pdf); if (v) printInvoice(v); });
-    $("invoices").querySelectorAll("[data-sendref]").forEach((b) => b.onclick = async () => {
-      const ref = $("invoices").querySelector(`[data-ref="${b.dataset.sendref}"]`).value.trim();
-      if (!ref) return msg("أدخِل مرجع التحويل", "err");
-      try { await api("POST", `/api/invoices/${b.dataset.sendref}/reference`, { reference: ref }); msg("تم إرسال المرجع ✓ — سنراجع ونُصدر المفتاح"); loadInvoices(); }
-      catch (e) { msg(e.message, "err"); }
-    });
     $("invoices").querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => msg("نُسخ المفتاح ✓")));
+    wirePay($("invoices"));
   } catch { $("invoices").innerHTML = `<div class="empty">تعذّر تحميل الفواتير.</div>`; }
 }
 $("inv-refresh").onclick = () => loadInvoices();
+
+// ===== خيارات الدفع (PayPal + تحويل بنكي بالإيصال) =====
+function payMethodsHtml(inv) {
+  const pay = CFG?.payment || {}, pp = pay.paypal || {};
+  let h = `<div class="paybox" data-inv="${inv.id}">`;
+  if (pp.enabled) h += `<button class="btn primary sm ppbtn" data-paypal="${inv.id}">💳 ادفع عبر PayPal</button>`;
+  if (pay.bankEnabled !== false) {
+    h += `<details class="bankpay"${pp.enabled ? "" : " open"}><summary>🏦 تحويل بنكي وإرفاق الإيصال</summary>
+      ${pay.bankDetails ? `<pre class="bankdet">${esc(pay.bankDetails)}</pre>` : ""}
+      ${pay.instructions ? `<div class="muted small">${esc(pay.instructions)}</div>` : ""}
+      <label style="margin-top:8px">مرجع عملية التحويل</label><input data-ref="${inv.id}" placeholder="رقم الحوالة">
+      <label>إرفاق صورة الإيصال (اختياري · حتى 1.5MB)</label><input type="file" accept="image/png,image/jpeg,image/webp" data-rfile="${inv.id}">
+      <button class="btn sm" data-sendref="${inv.id}" style="margin-top:8px">إرسال للمراجعة</button>`;
+    h += `</details>`;
+  }
+  h += `</div>`;
+  return h;
+}
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return rej(new Error("الصورة يجب أن تكون PNG أو JPG أو WEBP"));
+    if (file.size > 1500000) return rej(new Error("حجم الصورة كبير (الحد ~1.5MB)"));
+    const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("تعذّر قراءة الملف")); r.readAsDataURL(file);
+  });
+}
+function wirePay(scope) {
+  scope.querySelectorAll("[data-paypal]").forEach((b) => b.onclick = async () => {
+    b.disabled = true; const old = b.textContent; b.textContent = "جارٍ التحويل إلى PayPal…";
+    try { const d = await api("POST", `/api/invoices/${b.dataset.paypal}/paypal/create`, {}); if (d.approveUrl) location.href = d.approveUrl; else throw new Error("تعذّر بدء الدفع"); }
+    catch (e) { msg(e.message, "err"); b.disabled = false; b.textContent = old; }
+  });
+  scope.querySelectorAll("[data-sendref]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.sendref;
+    const ref = (scope.querySelector(`[data-ref="${id}"]`)?.value || "").trim();
+    const fileInp = scope.querySelector(`[data-rfile="${id}"]`);
+    const hasFile = fileInp && fileInp.files && fileInp.files[0];
+    if (!ref && !hasFile) return msg("أدخِل المرجع أو أرفِق صورة الإيصال", "err");
+    let receipt = "";
+    try { if (hasFile) receipt = await fileToDataUrl(fileInp.files[0]); } catch (e) { return msg(e.message, "err"); }
+    b.disabled = true;
+    try { await api("POST", `/api/invoices/${id}/reference`, { reference: ref, receipt }); msg("تم الإرسال ✓ — سنراجع ونُصدر المفتاح", "ok"); loadInvoices(); }
+    catch (e) { msg(e.message, "err"); b.disabled = false; }
+  });
+}
 
 // طباعة/تنزيل فاتورة PDF بهوية Cognita
 function printInvoice(v) {
@@ -178,28 +217,28 @@ function printInvoice(v) {
 // ===== إجراءات أخرى =====
 $("logout").onclick = () => { token = ""; localStorage.removeItem(tk); show(false); };
 $("activate").onclick = async () => { try { await api("POST", "/api/license/activate", { key: $("license").value.trim() }); msg("تم التفعيل ✓"); loadAccount(); } catch (e) { msg(e.message, "err"); } };
-$("order").onclick = async () => { try { const d = await api("POST", "/api/orders", { cycle: selectedCycle }); msg("أُنشئت الفاتورة — أكمل الدفع"); showPay(d.invoice, d.payment); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
-$("renew").onclick = async () => { try { const d = await api("POST", "/api/subscription/renew", { cycle: selectedCycle }); msg("أُنشئت فاتورة تجديد"); showPay(d.invoice, d.payment); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+$("order").onclick = async () => { try { const d = await api("POST", "/api/orders", { cycle: selectedCycle }); msg("أُنشئت الفاتورة — أكمل الدفع"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
+$("renew").onclick = async () => { try { const d = await api("POST", "/api/subscription/renew", { cycle: selectedCycle }); msg("أُنشئت فاتورة تجديد"); showPay(d.invoice); loadInvoices(); } catch (e) { msg(e.message, "err"); } };
 
-function showPay(invoice, payment) {
-  const p = payment || CFG?.payment || {};
+function showPay(invoice) {
   $("pay").style.display = "block";
   $("pay").innerHTML = `<b>فاتورة ${esc(invoice.number)} — ${money(esc(invoice.amount), esc(invoice.currency))}</b>
-    <pre style="white-space:pre-wrap;margin:8px 0;direction:rtl;font-family:inherit">${esc(p.bankDetails || "")}</pre>
-    <div class="muted small">${esc(p.instructions || "")}</div>
-    <label style="margin-top:8px">مرجع عملية التحويل</label>
-    <input id="ref" placeholder="رقم الحوالة">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button class="btn primary sm" id="send-ref">إرسال المرجع</button>
-      <button class="btn ghost sm" id="pay-pdf">⬇ تنزيل الفاتورة PDF</button>
-    </div>`;
-  $("send-ref").onclick = async () => {
-    try { await api("POST", `/api/invoices/${invoice.id}/reference`, { reference: $("ref").value.trim() }); msg("تم إرسال المرجع ✓ — سنراجع ونُصدر المفتاح"); loadInvoices(); }
-    catch (e) { msg(e.message, "err"); }
-  };
+    <div class="muted small" style="margin-top:4px">اختر طريقة الدفع:</div>
+    ${payMethodsHtml(invoice)}
+    <div style="margin-top:10px"><button class="btn ghost sm" id="pay-pdf">⬇ تنزيل الفاتورة PDF</button></div>`;
+  wirePay($("pay"));
   $("pay-pdf").onclick = () => printInvoice(invoice);
 }
 
 loadConfig();
 setAuthMode("login");
 if (token) loadAccount(); else show(false);
+
+// نتيجة العودة من PayPal
+(() => {
+  const p = new URLSearchParams(location.search);
+  if (p.get("paid")) msg("تم الدفع بنجاح ✓ — فُعّل اشتراك Pro", "ok");
+  else if (p.get("payfail")) msg("تعذّر إتمام الدفع. حاول مجدداً أو استخدم التحويل البنكي.", "err");
+  else if (p.get("paycancel")) msg("أُلغيت عملية الدفع.", "err");
+  if (p.get("paid") || p.get("payfail") || p.get("paycancel")) history.replaceState({}, "", "/app");
+})();

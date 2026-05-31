@@ -1,6 +1,7 @@
 // server.js — خادم Cognita (Express + PostgreSQL) — منصة كاملة مع لوحة أدمن وفوترة
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { q, init, uid, getSettings, saveSettings } from "./db.js";
@@ -9,15 +10,44 @@ import { genKey, entitlementFor } from "./licenses.js";
 import { BRAND, PRICING, PAYMENT } from "./config.js";
 import { callModel as proxyCall } from "./models.js";
 import { mailerStatus, notifyInvoiceCreated, notifyLicenseIssued } from "./mailer.js";
+import * as paypal from "./paypal.js";
+
+// أمان: ارفض الإقلاع إن لم يُضبط سرّ JWT قوي (يمنع تزوير الرموز بسرّ افتراضي معروف)
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim().length < 16) {
+  console.error("✗ JWT_SECRET غير مضبوط أو قصير (<16 حرفاً). اضبط سرّاً عشوائياً قوياً في متغيّرات البيئة ثم أعد التشغيل.");
+  process.exit(1);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUB = path.join(__dirname, "public");
 const app = express();
 const PORT = process.env.PORT || 8080;
+app.set("trust proxy", 1); // خلف وكيل Coolify/Traefik — ليقرأ rate-limit عنوان IP الحقيقي
 
-app.use(cors());
+// CORS مُقيّد: الموقع نفسه + امتدادات المتصفح فقط (لا أي موقع عشوائي)
+const SITE_ORIGIN = (process.env.SITE_URL || BRAND.url || "https://cognita.dalilai.net").replace(/\/+$/, "");
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // طلبات من نفس الأصل أو أدوات الخادم
+    if (/^(chrome|moz)-extension:\/\//.test(origin)) return cb(null, true);
+    if (origin === SITE_ORIGIN) return cb(null, true);
+    return cb(null, false);
+  },
+}));
+// ترويسات أمان أساسية
+app.use((_q, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "SAMEORIGIN");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(PUB, { extensions: ["html"] }));
+
+// حدود معدّل الطلبات
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false, message: { error: "محاولات كثيرة. حاول بعد قليل." } });
+const proxyLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "طلبات كثيرة للوكيل. تمهّل قليلاً." } });
+app.use(["/api/auth/login", "/api/auth/register", "/api/admin/login"], authLimiter);
 
 const ah = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
   console.error(e); res.status(500).json({ error: "خطأ في الخادم." });
@@ -53,6 +83,30 @@ async function proxyConfig() {
     limits: { pro: Number(p.limits?.pro ?? 1000), free: Number(p.limits?.free ?? 0) },
   };
 }
+// إعدادات الدفع الفعّالة (مع السرّ — للاستخدام الداخلي فقط)
+async function paymentConfig() {
+  const c = await effConfig();
+  const pay = c.payment || {};
+  const pp = pay.paypal || {};
+  return {
+    bankEnabled: pay.bankEnabled !== false,
+    bankDetails: pay.bankDetails || "",
+    instructions: pay.instructions || "",
+    paypal: {
+      enabled: !!pp.enabled, clientId: pp.clientId || "", secret: pp.secret || "",
+      mode: pp.mode === "sandbox" ? "sandbox" : "live",
+      currency: pp.currency || "USD", rate: Number(pp.rate || 1) || 1,
+    },
+  };
+}
+// نسخة عامة آمنة (بلا أسرار) تُرسَل في /api/config
+function publicPayment(pay) {
+  const pp = (pay && pay.paypal) || {};
+  return {
+    bankEnabled: pay?.bankEnabled !== false, bankDetails: pay?.bankDetails || "", instructions: pay?.instructions || "",
+    paypal: { enabled: !!pp.enabled, mode: pp.mode === "sandbox" ? "sandbox" : "live" },
+  };
+}
 const ym = () => new Date().toISOString().slice(0, 7);
 // آخر n شهر بصيغة YYYY-MM (تصاعدياً)
 function lastMonths(n = 6) {
@@ -67,7 +121,10 @@ function lastMonths(n = 6) {
 
 // ===== عام =====
 app.get("/api/health", (_q, r) => r.json({ ok: true, service: "cognita-server", version: "1.3.0" }));
-app.get("/api/config", ah(async (_q, r) => r.json(await effConfig())));
+app.get("/api/config", ah(async (_q, r) => {
+  const c = await effConfig();
+  r.json({ brand: c.brand, pricing: c.pricing, payment: publicPayment(c.payment) });
+}));
 
 // ===== المصادقة =====
 app.post("/api/auth/register", ah(async (req, res) => {
@@ -85,17 +142,6 @@ app.post("/api/auth/login", ah(async (req, res) => {
   if (!u || !verifyPassword(password || "", u.pass_hash)) return res.status(401).json({ error: "بيانات الدخول غير صحيحة." });
   res.json({ token: signToken(u), user: publicUser(u) });
 }));
-
-// تشخيص آمن: يكشف البريد المُهيّأ وطول كلمة المرور (دون كشف كلمة المرور) لتأكيد التطابق
-app.get("/api/admin/diag", (_req, res) => {
-  const AE = (process.env.ADMIN_EMAIL || "").trim(), AP = (process.env.ADMIN_PASSWORD || "").trim();
-  res.json({
-    adminEmailConfigured: !!AE,
-    adminEmail: AE || null,
-    adminPasswordConfigured: !!AP,
-    adminPasswordLength: AP.length,
-  });
-});
 
 // دخول المشرف: يتحقّق مباشرةً من متغيّري البيئة ويُنشئ/يُصلح حساب المشرف لحظياً (مضمون)
 app.post("/api/admin/login", ah(async (req, res) => {
@@ -156,10 +202,12 @@ app.get("/api/sync/pull", authMiddleware, ah(async (req, res) => {
 }));
 
 // ===== وكيل النماذج المركزي (Pro) =====
-app.post("/api/model/proxy", authMiddleware, ah(async (req, res) => {
+app.post("/api/model/proxy", proxyLimiter, authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
   if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
   if (entOf(u).plan !== "pro") return res.status(403).json({ error: "وكيل النماذج متاح في خطة Pro فقط." });
+  const inLen = String(req.body?.user || "").length + String(req.body?.system || "").length;
+  if (inLen > 24000) return res.status(400).json({ error: "النص طويل جداً (الحد ~24000 حرفاً)." });
   const cfg = await proxyConfig();
   if (!cfg.enabled) return res.status(403).json({ error: "وكيل النماذج غير مُفعّل على الخادم." });
   const provider = (req.body?.provider) || cfg.defaultProvider;
@@ -187,6 +235,19 @@ async function createInvoice(user, { type = "subscription", plan = "pro", cycle 
     [id, "INV-" + id.toUpperCase(), user.id, user.email, type, plan, cycle, amount, currency, String(note || ""), Date.now()]);
   return (await q("SELECT * FROM invoices WHERE id=$1", [id])).rows[0];
 }
+// إتمام الفاتورة: إصدار مفتاح + ترقية المستخدم + إشعار بريد (يُعاد استخدامه للدفع اليدوي وPayPal)
+async function fulfillInvoice(inv, daysOverride) {
+  const days = daysOverride != null ? daysOverride : (inv.cycle === "lifetime" ? null : inv.cycle === "annual" ? 365 : 30);
+  const now = Date.now(), key = genKey();
+  await q("INSERT INTO licenses(key,tier,days,used_by,activated_at,expires_at,created_at) VALUES($1,'pro',$2,$3,$4,$5,$4)",
+    [key, days, inv.user_id, now, days ? now + days * 864e5 : null]);
+  const expiresAt = days ? now + days * 864e5 : null;
+  await q("UPDATE users SET plan='pro', license_key=$1, expires_at=$2 WHERE id=$3", [key, expiresAt, inv.user_id]);
+  await q("UPDATE invoices SET status='paid', issued_key=$1, paid_at=$2 WHERE id=$3", [key, now, inv.id]);
+  const cfg = await effConfig();
+  notifyLicenseIssued({ brand: cfg.brand, user: { email: inv.email }, key, invoice: inv }).catch(() => {});
+  return key;
+}
 app.post("/api/orders", authMiddleware, ah(async (req, res) => {
   const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
   const { plan = "pro", cycle = "monthly", note = "" } = req.body || {};
@@ -207,11 +268,51 @@ app.get("/api/invoices/mine", authMiddleware, ah(async (req, res) => {
   res.json({ invoices: (await q("SELECT * FROM invoices WHERE user_id=$1 ORDER BY created_at DESC", [req.auth.id])).rows });
 }));
 app.post("/api/invoices/:id/reference", authMiddleware, ah(async (req, res) => {
-  const { reference = "", note = "" } = req.body || {};
-  await q("UPDATE invoices SET reference=$1, note=$2 WHERE id=$3 AND user_id=$4",
-    [String(reference), String(note), req.params.id, req.auth.id]);
+  const { reference = "", note = "", receipt = "" } = req.body || {};
+  let rcpt = String(receipt || "");
+  if (rcpt && !/^data:image\/(png|jpe?g|webp);base64,/i.test(rcpt)) return res.status(400).json({ error: "صيغة الإيصال غير مدعومة (PNG/JPG/WEBP)." });
+  if (rcpt.length > 2000000) return res.status(400).json({ error: "حجم الإيصال كبير جداً (الحد ~1.5MB)." });
+  await q("UPDATE invoices SET reference=$1, note=$2, receipt=COALESCE(NULLIF($3,''), receipt) WHERE id=$4 AND user_id=$5",
+    [String(reference), String(note), rcpt, req.params.id, req.auth.id]);
   res.json({ ok: true });
 }));
+
+// ===== PayPal (تلقائي) =====
+app.post("/api/invoices/:id/paypal/create", authMiddleware, ah(async (req, res) => {
+  const inv = (await q("SELECT * FROM invoices WHERE id=$1 AND user_id=$2", [req.params.id, req.auth.id])).rows[0];
+  if (!inv) return res.status(404).json({ error: "الفاتورة غير موجودة." });
+  if (inv.status !== "unpaid") return res.status(400).json({ error: "الفاتورة ليست معلّقة." });
+  const pay = await paymentConfig(), pp = pay.paypal;
+  if (!pp.enabled || !pp.clientId || !pp.secret) return res.status(400).json({ error: "الدفع عبر PayPal غير مُفعّل حالياً." });
+  const amount = (parseFloat(inv.amount) || 0) * (pp.rate || 1);
+  if (!(amount > 0)) return res.status(400).json({ error: "مبلغ غير صالح." });
+  const origin = `${req.protocol}://${req.get("host")}`;
+  const brandName = (await effConfig()).brand?.name || "Cognita";
+  try {
+    const order = await paypal.createOrder({
+      clientId: pp.clientId, secret: pp.secret, mode: pp.mode,
+      amount, currency: pp.currency, invoiceNumber: inv.number || inv.id, brandName,
+      returnUrl: `${origin}/api/paypal/return`, cancelUrl: `${origin}/api/paypal/cancel`,
+    });
+    await q("UPDATE invoices SET pp_order_id=$1, method='paypal' WHERE id=$2", [order.id, inv.id]);
+    res.json({ approveUrl: order.approveUrl });
+  } catch (e) { res.status(502).json({ error: "تعذّر إنشاء طلب PayPal: " + (e.message || "") }); }
+}));
+app.get("/api/paypal/return", ah(async (req, res) => {
+  const orderId = req.query.token;
+  if (!orderId) return res.redirect("/app?payfail=1");
+  const inv = (await q("SELECT * FROM invoices WHERE pp_order_id=$1", [String(orderId)])).rows[0];
+  if (!inv) return res.redirect("/app?payfail=1");
+  if (inv.status === "paid") return res.redirect("/app?paid=1");
+  const pay = await paymentConfig(), pp = pay.paypal;
+  try {
+    const cap = await paypal.captureOrder({ clientId: pp.clientId, secret: pp.secret, mode: pp.mode, orderId: String(orderId) });
+    if (cap.status !== "COMPLETED") return res.redirect("/app?payfail=1");
+    await fulfillInvoice(inv);
+    res.redirect("/app?paid=1");
+  } catch (e) { console.error("paypal capture:", e.message); res.redirect("/app?payfail=1"); }
+}));
+app.get("/api/paypal/cancel", (_q, res) => res.redirect("/app?paycancel=1"));
 
 // ===== الإدارة =====
 app.get("/api/admin/stats", adminAuth, ah(async (_q, res) => {
@@ -259,30 +360,31 @@ app.post("/api/admin/customers/:id", adminAuth, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 app.get("/api/admin/invoices", adminAuth, ah(async (_q, res) => {
-  res.json({ invoices: (await q("SELECT * FROM invoices ORDER BY created_at DESC LIMIT 500")).rows });
+  res.json({ invoices: (await q(`SELECT id,number,user_id,email,type,plan,cycle,amount,currency,method,reference,note,status,issued_key,created_at,paid_at,pp_order_id,(receipt IS NOT NULL AND receipt<>'') AS has_receipt FROM invoices ORDER BY created_at DESC LIMIT 500`)).rows });
+}));
+// عرض صورة الإيصال المرفق (للمشرف)
+app.get("/api/admin/invoices/:id/receipt", adminAuth, ah(async (req, res) => {
+  const r = (await q("SELECT receipt FROM invoices WHERE id=$1", [req.params.id])).rows[0];
+  const m = r?.receipt && /^data:(image\/[a-z]+);base64,(.+)$/i.exec(r.receipt);
+  if (!m) return res.status(404).json({ error: "لا إيصال مرفق." });
+  res.set("Content-Type", m[1]); res.send(Buffer.from(m[2], "base64"));
 }));
 app.post("/api/admin/invoices/:id/pay", adminAuth, ah(async (req, res) => {
   const inv = (await q("SELECT * FROM invoices WHERE id=$1", [req.params.id])).rows[0];
   if (!inv) return res.status(404).json({ error: "الفاتورة غير موجودة." });
-  const days = Number((req.body || {}).days) || (inv.cycle === "lifetime" ? null : inv.cycle === "annual" ? 365 : 30);
-  const now = Date.now();
-  const key = genKey();
-  await q("INSERT INTO licenses(key,tier,days,used_by,activated_at,expires_at,created_at) VALUES($1,'pro',$2,$3,$4,$5,$4)",
-    [key, days, inv.user_id, now, days ? now + days * 864e5 : null]);
-  const expiresAt = days ? now + days * 864e5 : null;
-  await q("UPDATE users SET plan='pro', license_key=$1, expires_at=$2 WHERE id=$3", [key, expiresAt, inv.user_id]);
-  await q("UPDATE invoices SET status='paid', issued_key=$1, paid_at=$2 WHERE id=$3", [key, now, inv.id]);
-  const cfg = await effConfig();
-  notifyLicenseIssued({ brand: cfg.brand, user: { email: inv.email }, key, invoice: inv }).catch(() => {});
+  if (inv.status === "paid") return res.json({ ok: true, key: inv.issued_key });
+  const daysOverride = (req.body || {}).days != null ? Number(req.body.days) : undefined;
+  const key = await fulfillInvoice(inv, daysOverride);
   res.json({ ok: true, key });
 }));
 app.post("/api/admin/invoices/:id/cancel", adminAuth, ah(async (req, res) => {
   await q("UPDATE invoices SET status='canceled' WHERE id=$1", [req.params.id]); res.json({ ok: true });
 }));
 app.get("/api/admin/settings", adminAuth, ah(async (_q, res) => {
-  const eff = await effConfig(), p = await proxyConfig();
+  const eff = await effConfig(), p = await proxyConfig(), pay = await paymentConfig();
   const maskedKeys = Object.fromEntries(Object.entries(p.providerKeys).map(([k, v]) => [k, v ? "•••• " + String(v).slice(-4) : ""]));
-  res.json({ ...eff, proxy: { ...p, providerKeys: maskedKeys } });
+  const payOut = { ...pay, paypal: { ...pay.paypal, secret: pay.paypal.secret ? "•••• " + pay.paypal.secret.slice(-4) : "" } };
+  res.json({ ...eff, payment: payOut, proxy: { ...p, providerKeys: maskedKeys } });
 }));
 app.post("/api/admin/settings", adminAuth, ah(async (req, res) => {
   const cur = await effConfig(), curProxy = await proxyConfig();
@@ -305,10 +407,33 @@ app.post("/api/admin/settings", adminAuth, ah(async (req, res) => {
       limits: { pro: Number(inp.limits?.pro ?? curProxy.limits.pro), free: Number(inp.limits?.free ?? curProxy.limits.free) },
     };
   }
+  // دمج إعدادات الدفع (مع حماية سرّ PayPal من الكتابة بقيمة مُقنّعة)
+  let payment = cur.payment || {};
+  if (req.body?.payment) {
+    const ip = req.body.payment, curPP = (cur.payment && cur.payment.paypal) || {};
+    let secret = curPP.secret || "";
+    if (typeof ip.paypal?.secret === "string") {
+      if (ip.paypal.secret && !ip.paypal.secret.includes("••")) secret = ip.paypal.secret.trim();
+      else if (ip.paypal.secret === "") secret = "";
+    }
+    payment = {
+      bankEnabled: ip.bankEnabled !== undefined ? !!ip.bankEnabled : (cur.payment?.bankEnabled !== false),
+      bankDetails: ip.bankDetails !== undefined ? String(ip.bankDetails) : (cur.payment?.bankDetails || ""),
+      instructions: ip.instructions !== undefined ? String(ip.instructions) : (cur.payment?.instructions || ""),
+      paypal: {
+        enabled: ip.paypal?.enabled !== undefined ? !!ip.paypal.enabled : !!curPP.enabled,
+        clientId: ip.paypal?.clientId !== undefined ? String(ip.paypal.clientId).trim() : (curPP.clientId || ""),
+        secret,
+        mode: (ip.paypal?.mode || curPP.mode) === "sandbox" ? "sandbox" : "live",
+        currency: ip.paypal?.currency !== undefined ? String(ip.paypal.currency || "USD").trim() : (curPP.currency || "USD"),
+        rate: ip.paypal?.rate !== undefined ? (Number(ip.paypal.rate) || 1) : (Number(curPP.rate) || 1),
+      },
+    };
+  }
   const next = {
     brand: { ...cur.brand, ...(req.body?.brand || {}) },
     pricing: { ...cur.pricing, ...(req.body?.pricing || {}) },
-    payment: { ...cur.payment, ...(req.body?.payment || {}) },
+    payment,
     proxy,
   };
   await saveSettings(next);
