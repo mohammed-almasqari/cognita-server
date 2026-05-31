@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة التحكم — Cognita</title>
+<link rel="icon" href="/assets/favicon.png">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div id="site-nav"></div>
+
+<div class="dash">
+  <h1 style="font-size:24px;margin-bottom:4px">لوحة التحكم</h1>
+  <p class="muted" style="margin-top:0">إدارة حسابك، ترخيصك، واشتراكك في Cognita.</p>
+  <div id="msg" class="msg"></div>
+
+  <!-- تسجيل الدخول -->
+  <div id="auth" class="dcard" style="max-width:460px;margin:18px auto;display:none">
+    <h3 id="auth-title">تسجيل الدخول / إنشاء حساب</h3>
+    <label>البريد الإلكتروني</label>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <label>كلمة المرور</label>
+    <input id="password" type="password" placeholder="٦ أحرف على الأقل" autocomplete="current-password">
+    <div class="row" style="display:flex;gap:10px">
+      <button class="btn primary" id="login">دخول</button>
+      <button class="btn ghost" id="register">حساب جديد</button>
+    </div>
+  </div>
+
+  <!-- لوحة الحساب -->
+  <div id="account" style="display:none">
+    <div class="dgrid">
+      <div class="dcard">
+        <h3>حسابي</h3>
+        <div class="kv"><span class="k">البريد</span><span id="u-email"></span></div>
+        <div class="kv"><span class="k">الخطة</span><span id="u-plan"></span></div>
+        <div class="kv"><span class="k">تنتهي في</span><span id="u-exp"></span></div>
+        <hr class="sep">
+        <button class="btn ghost sm" id="logout">تسجيل الخروج</button>
+      </div>
+
+      <div class="dcard">
+        <h3>تفعيل الترخيص</h3>
+        <label>مفتاح الترخيص</label>
+        <input id="license" placeholder="COG-XXXX-XXXX-XXXX">
+        <button class="btn primary block" id="activate">تفعيل المفتاح</button>
+        <p class="muted small" style="margin-top:10px">حصلت على مفتاح بعد الدفع؟ فعّله هنا ليُحدَّث حسابك إلى Pro.</p>
+      </div>
+    </div>
+
+    <!-- طلب ترقية -->
+    <div class="dcard" style="margin-top:18px">
+      <h3>الترقية إلى Pro</h3>
+      <div class="row" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="flex:1;min-width:160px"><label>الخطة</label>
+          <select id="cycle">
+            <option value="monthly">شهري — 29 ريال</option>
+            <option value="annual">سنوي — 290 ريال</option>
+            <option value="lifetime">مدى الحياة — 749 ريال</option>
+          </select></div>
+      </div>
+      <div id="pay-instructions" class="pay-box">تعليمات الدفع تُحمّل...</div>
+      <label>مرجع عملية الدفع / التحويل</label>
+      <input id="ref" placeholder="رقم الحوالة أو معرّف العملية">
+      <label>ملاحظة (اختياري)</label>
+      <textarea id="note" rows="2" placeholder="أي تفاصيل إضافية"></textarea>
+      <button class="btn primary block" id="order">إرسال طلب الترقية</button>
+    </div>
+
+    <!-- المزامنة -->
+    <div class="dcard" style="margin-top:18px">
+      <h3>المزامنة السحابية <span class="pill pro">Pro</span></h3>
+      <p class="muted small">تتم المزامنة من داخل الإضافة (الإعدادات ← الحساب ← «رفع/جلب»). هنا تظهر حالة خطتك فقط.</p>
+    </div>
+
+    <!-- المشرف -->
+    <details class="dcard" style="margin-top:18px">
+      <summary style="cursor:pointer;font-weight:700">لوحة المشرف</summary>
+      <div style="margin-top:14px">
+        <label>رمز الإدارة (ADMIN_TOKEN)</label>
+        <input id="admin-token" type="password" placeholder="رمز الإدارة">
+        <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px"><label>المدة (يوم)</label><input id="g-days" type="number" placeholder="365"></div>
+          <div style="flex:1;min-width:120px"><label>العدد</label><input id="g-count" type="number" placeholder="1"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn sm" id="gen">توليد مفاتيح Pro</button>
+          <button class="btn sm ghost" id="load-reqs">تحديث الطلبات</button>
+        </div>
+        <div id="keys" class="keylist" style="display:none"></div>
+        <div id="reqs" style="margin-top:14px"></div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div id="site-footer"></div>
+<script src="/assets/site.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

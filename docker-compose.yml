@@ -1,0 +1,36 @@
+# docker-compose.yml — التطبيق + PostgreSQL (للتشغيل المحلي أو عبر Coolify)
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cognita-db
+    environment:
+      - POSTGRES_USER=cognita
+      - POSTGRES_PASSWORD=${PGPASSWORD:-change_me}
+      - POSTGRES_DB=cognita
+    volumes:
+      - cognita-db:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cognita"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cognita-server:
+    build: .
+    container_name: cognita-server
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - PORT=8080
+      - DATABASE_URL=postgres://cognita:${PGPASSWORD:-change_me}@db:5432/cognita
+      - PGSSL=false
+    restart: unless-stopped
+
+volumes:
+  cognita-db:
