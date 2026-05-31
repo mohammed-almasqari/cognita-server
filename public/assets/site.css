@@ -141,3 +141,11 @@ table.t th{background:var(--bg2);color:var(--ink2)}
 @keyframes sp{to{transform:rotate(360deg)}}
 .muted{color:var(--muted)}.small{font-size:13px}.center{text-align:center}
 hr.sep{border:0;border-top:1px solid var(--line);margin:18px 0}
+
+/* gallery (screenshots) */
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+@media(max-width:860px){.gallery{grid-template-columns:1fr}}
+.gallery figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;transition:.2s}
+.gallery figure:hover{transform:translateY(-4px);border-color:var(--prompt)}
+.gallery img{display:block;width:100%;height:auto}
+.gallery figcaption{padding:12px 15px;font-size:13.5px;color:var(--ink2);font-weight:600}

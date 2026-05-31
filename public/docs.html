@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>توثيق API — Cognita</title>
-<meta name="description" content="توثيق واجهة Cognita البرمجية: المصادقة، الترخيص، والمزامنة لمستخدمي Pro والمطوّرين.">
+<meta name="description" content="توثيق واجهة Cognita البرمجية: المصادقة، الترخيص، المزامنة، ووكيل النماذج المركزي لمستخدمي Pro والمطوّرين.">
 <link rel="icon" href="/assets/favicon.png">
 <link rel="stylesheet" href="/assets/site.css">
 <style>
@@ -94,7 +94,21 @@
     <pre>→ { "prompts":[...], "flows":[...], "searches":[...] }</pre>
   </div>
 
-  <h2 class="s">٤) الفوترة</h2>
+  <h2 class="s">٤) وكيل النماذج المركزي <span class="pill pro">Pro</span></h2>
+  <p>يتيح لمشتركي Pro استدعاء نماذج الذكاء عبر مفاتيح الخادم المركزية — دون مفتاح خاص — ضمن حدّ شهري يحدّده المشرف. يجب أن يكون الحساب Pro وأن يُفعّل المشرف الوكيل، وإلا تُرجَع <code>403</code>؛ وعند تجاوز الحدّ تُرجَع <code>429</code>.</p>
+  <div class="ep">
+    <span class="m post">POST</span><code class="path">/api/model/proxy</code>
+    <p>الحقول: <code>provider</code> (openai/anthropic/gemini · اختياري، الافتراضي من إعداد الخادم)، <code>system</code> (اختياري)، <code>user</code> (نص الطلب)، <code>temperature</code> (اختياري).</p>
+    <pre>curl -X POST https://cognita.dalilai.net/api/model/proxy \
+  -H "Authorization: Bearer JWT..." \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"openai","user":"لخّص النص التالي: ..."}'
+
+→ { "text": "الناتج...", "usage": 12, "limit": 1000 }</pre>
+    <p class="muted small"><code>usage</code> عدد طلباتك هذا الشهر بعد هذا الطلب، و<code>limit</code> الحدّ الشهري (0 = بلا حد). النموذج يحدّده الخادم لضبط التكلفة.</p>
+  </div>
+
+  <h2 class="s">٥) الفوترة</h2>
   <div class="ep"><span class="m post">POST</span><code class="path">/api/orders</code><p>إنشاء فاتورة اشتراك. <code>{plan,cycle}</code></p></div>
   <div class="ep"><span class="m post">POST</span><code class="path">/api/subscription/renew</code><p>إنشاء فاتورة تجديد.</p></div>
   <div class="ep"><span class="m get">GET</span><code class="path">/api/invoices/mine</code><p>قائمة فواتير المستخدم.</p></div>
