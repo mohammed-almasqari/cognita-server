@@ -96,10 +96,10 @@ async function loadAnalytics() {
 function renderCustomers(list) {
   $("customers").innerHTML = `<table class="t"><tr><th>البريد</th><th>الخطة</th><th>تنتهي</th><th>إجراءات</th></tr>` +
     list.map((c) => `<tr>
-      <td>${esc(c.email)}${c.is_admin ? ' <span class="pill pro">admin</span>' : ""}</td>
-      <td><span class="pill ${c.plan === "pro" ? "pro" : "free"}">${esc(c.plan)}</span></td>
-      <td>${dt(c.expires_at)}</td>
-      <td style="white-space:nowrap">
+      <td data-label="البريد">${esc(c.email)}${c.is_admin ? ' <span class="pill pro">admin</span>' : ""}</td>
+      <td data-label="الخطة"><span class="pill ${c.plan === "pro" ? "pro" : "free"}">${esc(c.plan)}</span></td>
+      <td data-label="تنتهي">${dt(c.expires_at)}</td>
+      <td data-label="إجراءات" style="white-space:nowrap">
         <button class="btn sm" data-pro="${c.id}">منح Pro سنة</button>
         <button class="btn sm ghost" data-free="${c.id}">تنزيل لمجاني</button>
       </td></tr>`).join("") + `</table>` + (list.length ? "" : `<p class="muted small">لا نتائج.</p>`);
@@ -126,10 +126,10 @@ const invStatusPill = (st) => `<span class="pill ${st === "paid" ? "fulfilled" :
 function renderInvoices(list) {
   $("invoices").innerHTML = list.length ? `<table class="t"><tr><th>رقم</th><th>العميل</th><th>النوع</th><th>الباقة</th><th>المبلغ</th><th>المرجع</th><th>الحالة</th><th>إجراء</th></tr>` +
     list.map((v) => `<tr>
-      <td>${esc(v.number || "-")}</td><td>${esc(v.email)}</td><td>${v.type === "renewal" ? "تجديد" : "اشتراك"}</td>
-      <td>${esc(v.plan)}/${esc(v.cycle)}</td><td>${money(esc(v.amount), esc(v.currency))}</td><td>${esc(v.reference || "-")}</td>
-      <td>${invStatusPill(v.status)}</td>
-      <td style="white-space:nowrap">
+      <td data-label="رقم">${esc(v.number || "-")}</td><td data-label="العميل">${esc(v.email)}</td><td data-label="النوع">${v.type === "renewal" ? "تجديد" : "اشتراك"}</td>
+      <td data-label="الباقة">${esc(v.plan)}/${esc(v.cycle)}</td><td data-label="المبلغ">${money(esc(v.amount), esc(v.currency))}</td><td data-label="المرجع">${esc(v.reference || "-")}</td>
+      <td data-label="الحالة">${invStatusPill(v.status)}</td>
+      <td data-label="إجراء" style="white-space:nowrap">
         ${v.status === "unpaid" ? `<button class="btn sm" data-pay="${v.id}">تأكيد الدفع</button> <button class="btn sm ghost" data-cancel="${v.id}">إلغاء</button> ` : v.issued_key ? `<code>${esc(v.issued_key)}</code> ` : ""}
         <button class="btn sm ghost" data-pdf="${v.id}">PDF</button>
       </td>
@@ -236,7 +236,7 @@ $("px-usage-load").onclick = async () => {
     const d = await api("GET", "/api/admin/usage");
     $("px-usage").innerHTML = d.users.length
       ? `<div class="muted small">إجمالي ${d.total} طلب في ${d.ym}</div><table class="t"><tr><th>العميل</th><th>الطلبات</th></tr>` +
-        d.users.map((u) => `<tr><td>${esc(u.email)}</td><td>${u.count}</td></tr>`).join("") + `</table>`
+        d.users.map((u) => `<tr><td data-label="العميل">${esc(u.email)}</td><td data-label="الطلبات">${u.count}</td></tr>`).join("") + `</table>`
       : `<p class="muted small">لا استخدام بعد هذا الشهر.</p>`;
   } catch (e) { msg(e.message, "err"); }
 };

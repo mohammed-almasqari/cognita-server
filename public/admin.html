@@ -55,6 +55,21 @@
     .side.open{transform:translateX(0)}
     .scrim.show{display:block}
   }
+  /* الجداول → بطاقات على الجوال (تتفادى التمدّد الأفقي) */
+  @media(max-width:720px){
+    .toolbar input{max-width:none;width:100%}
+    .main{padding:18px 14px 60px}
+    table.t{border:0;display:block}
+    table.t tbody{display:block}
+    table.t tr{display:block;background:var(--bg2);border:1px solid var(--line);border-radius:12px;margin-bottom:11px;padding:3px 4px}
+    table.t tr:first-child{display:none}            /* إخفاء صف العناوين */
+    table.t td{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+      white-space:normal;border:0;border-bottom:1px solid var(--line);text-align:left;padding:10px 13px;font-size:13.5px}
+    table.t td:last-child{border-bottom:0}
+    table.t td::before{content:attr(data-label);color:var(--muted);font-weight:600;text-align:right;flex:none}
+    table.t td:empty{display:none}
+    table.t td [class^="btn"],table.t td .btn{margin:2px 0}
+  }
 </style>
 </head>
 <body>
