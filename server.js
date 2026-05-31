@@ -7,6 +7,7 @@ import { q, init, uid, getSettings, saveSettings } from "./db.js";
 import { hashPassword, verifyPassword, signToken, authMiddleware, adminAuth, seedAdmin } from "./auth.js";
 import { genKey, entitlementFor } from "./licenses.js";
 import { BRAND, PRICING, PAYMENT } from "./config.js";
+import { callModel as proxyCall } from "./models.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUB = path.join(__dirname, "public");
@@ -39,6 +40,19 @@ async function priceFor(plan, cycle) {
   const p = c.pricing.plans?.[plan] || c.pricing.plans?.pro || { monthly: 29 };
   return { amount: String(p[cycle] ?? p.monthly), currency: c.pricing.currencyLabel || c.pricing.currency || "SAR" };
 }
+// إعدادات وكيل النماذج (سرّية — لا تُعرض في /api/config العام)
+async function proxyConfig() {
+  const s = await getSettings();
+  const p = (s && s.proxy) || {};
+  return {
+    enabled: p.enabled !== false,
+    defaultProvider: p.defaultProvider || "openai",
+    models: p.models || {},
+    providerKeys: p.providerKeys || { openai: "", anthropic: "", gemini: "" },
+    limits: { pro: Number(p.limits?.pro ?? 1000), free: Number(p.limits?.free ?? 0) },
+  };
+}
+const ym = () => new Date().toISOString().slice(0, 7);
 
 // ===== عام =====
 app.get("/api/health", (_q, r) => r.json({ ok: true, service: "cognita-server", version: "1.3.0" }));
@@ -130,6 +144,29 @@ app.get("/api/sync/pull", authMiddleware, ah(async (req, res) => {
   res.json((await q("SELECT prompts,flows,searches FROM sync_data WHERE user_id=$1", [u.id])).rows[0] || { prompts: [], flows: [], searches: [] });
 }));
 
+// ===== وكيل النماذج المركزي (Pro) =====
+app.post("/api/model/proxy", authMiddleware, ah(async (req, res) => {
+  const u = (await q("SELECT * FROM users WHERE id=$1", [req.auth.id])).rows[0];
+  if (!u) return res.status(404).json({ error: "المستخدم غير موجود." });
+  if (entOf(u).plan !== "pro") return res.status(403).json({ error: "وكيل النماذج متاح في خطة Pro فقط." });
+  const cfg = await proxyConfig();
+  if (!cfg.enabled) return res.status(403).json({ error: "وكيل النماذج غير مُفعّل على الخادم." });
+  const provider = (req.body?.provider) || cfg.defaultProvider;
+  const key = cfg.providerKeys[provider];
+  if (!key) return res.status(400).json({ error: "لم يُضبط مفتاح هذا المزوّد في الخادم." });
+  const m = ym();
+  const used = Number((await q("SELECT count FROM usage_log WHERE user_id=$1 AND ym=$2", [u.id, m])).rows[0]?.count || 0);
+  const limit = cfg.limits.pro;
+  if (limit && used >= limit) return res.status(429).json({ error: `تجاوزت حد الاستخدام الشهري (${limit} طلب).` });
+  let text;
+  try {
+    text = await proxyCall({ provider, model: req.body?.model || cfg.models[provider], system: req.body?.system, user: req.body?.user || "", temperature: req.body?.temperature });
+  } catch (e) { return res.status(502).json({ error: "خطأ من مزوّد النموذج: " + (e.message || "") }); }
+  await q(`INSERT INTO usage_log(user_id,ym,count,updated_at) VALUES($1,$2,1,$3)
+           ON CONFLICT (user_id,ym) DO UPDATE SET count=usage_log.count+1, updated_at=$3`, [u.id, m, Date.now()]);
+  res.json({ text, usage: used + 1, limit });
+}));
+
 // ===== الفوترة (العميل) =====
 async function createInvoice(user, { type = "subscription", plan = "pro", cycle = "monthly", note = "" }) {
   const { amount, currency } = await priceFor(plan, cycle);
@@ -198,15 +235,47 @@ app.post("/api/admin/invoices/:id/pay", adminAuth, ah(async (req, res) => {
 app.post("/api/admin/invoices/:id/cancel", adminAuth, ah(async (req, res) => {
   await q("UPDATE invoices SET status='canceled' WHERE id=$1", [req.params.id]); res.json({ ok: true });
 }));
-app.get("/api/admin/settings", adminAuth, ah(async (_q, res) => res.json(await effConfig())));
+app.get("/api/admin/settings", adminAuth, ah(async (_q, res) => {
+  const eff = await effConfig(), p = await proxyConfig();
+  const maskedKeys = Object.fromEntries(Object.entries(p.providerKeys).map(([k, v]) => [k, v ? "•••• " + String(v).slice(-4) : ""]));
+  res.json({ ...eff, proxy: { ...p, providerKeys: maskedKeys } });
+}));
 app.post("/api/admin/settings", adminAuth, ah(async (req, res) => {
-  const cur = await effConfig();
+  const cur = await effConfig(), curProxy = await proxyConfig();
+  // دمج إعدادات الوكيل: لا نكتب فوق المفتاح إلا إذا أُرسلت قيمة جديدة حقيقية (غير مُقنّعة)
+  let proxy = curProxy;
+  if (req.body?.proxy) {
+    const inp = req.body.proxy, keys = { ...curProxy.providerKeys };
+    for (const k of ["openai", "anthropic", "gemini"]) {
+      const v = inp.providerKeys?.[k];
+      if (typeof v === "string") {
+        if (v && !v.includes("••")) keys[k] = v.trim();
+        else if (v === "") keys[k] = "";
+      }
+    }
+    proxy = {
+      enabled: inp.enabled !== undefined ? !!inp.enabled : curProxy.enabled,
+      defaultProvider: inp.defaultProvider || curProxy.defaultProvider,
+      models: { ...curProxy.models, ...(inp.models || {}) },
+      providerKeys: keys,
+      limits: { pro: Number(inp.limits?.pro ?? curProxy.limits.pro), free: Number(inp.limits?.free ?? curProxy.limits.free) },
+    };
+  }
   const next = {
     brand: { ...cur.brand, ...(req.body?.brand || {}) },
     pricing: { ...cur.pricing, ...(req.body?.pricing || {}) },
     payment: { ...cur.payment, ...(req.body?.payment || {}) },
+    proxy,
   };
-  await saveSettings(next); res.json(next);
+  await saveSettings(next);
+  res.json({ ok: true });
+}));
+app.get("/api/admin/usage", adminAuth, ah(async (_q, res) => {
+  const m = ym();
+  const rows = (await q(
+    `SELECT u.email, l.count FROM usage_log l JOIN users u ON u.id=l.user_id WHERE l.ym=$1 ORDER BY l.count DESC LIMIT 200`, [m]
+  )).rows;
+  res.json({ ym: m, total: rows.reduce((s, r) => s + Number(r.count), 0), users: rows });
 }));
 app.post("/api/admin/licenses", adminAuth, ah(async (req, res) => {
   const { tier = "pro", days = 365, count = 1 } = req.body || {};

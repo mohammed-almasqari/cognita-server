@@ -83,7 +83,35 @@ async function loadSettings() {
   const pro = c.pricing.plans?.pro || {};
   $("s-monthly").value = pro.monthly ?? ""; $("s-annual").value = pro.annual ?? ""; $("s-lifetime").value = pro.lifetime ?? "";
   $("s-bank").value = c.payment.bankDetails || ""; $("s-instructions").value = c.payment.instructions || "";
+  // وكيل النماذج
+  const px = c.proxy || {};
+  $("px-enabled").checked = px.enabled !== false;
+  $("px-default").value = px.defaultProvider || "openai";
+  $("px-limit-pro").value = px.limits?.pro ?? 1000;
+  $("px-key-openai").value = px.providerKeys?.openai || "";
+  $("px-key-anthropic").value = px.providerKeys?.anthropic || "";
+  $("px-key-gemini").value = px.providerKeys?.gemini || "";
 }
+$("px-save").onclick = async () => {
+  try {
+    await api("POST", "/api/admin/settings", { proxy: {
+      enabled: $("px-enabled").checked,
+      defaultProvider: $("px-default").value,
+      limits: { pro: +$("px-limit-pro").value || 0 },
+      providerKeys: { openai: $("px-key-openai").value, anthropic: $("px-key-anthropic").value, gemini: $("px-key-gemini").value },
+    }});
+    msg("تم حفظ إعدادات الوكيل ✓"); loadSettings();
+  } catch (e) { msg(e.message, "err"); }
+};
+$("px-usage-load").onclick = async () => {
+  try {
+    const d = await api("GET", "/api/admin/usage");
+    $("px-usage").innerHTML = d.users.length
+      ? `<div class="muted small">إجمالي ${d.total} طلب في ${d.ym}</div><table class="t"><tr><th>العميل</th><th>الطلبات</th></tr>` +
+        d.users.map((u) => `<tr><td>${u.email}</td><td>${u.count}</td></tr>`).join("") + `</table>`
+      : `<p class="muted small">لا استخدام بعد هذا الشهر.</p>`;
+  } catch (e) { msg(e.message, "err"); }
+};
 $("save-settings").onclick = async () => {
   try {
     await api("POST", "/api/admin/settings", {

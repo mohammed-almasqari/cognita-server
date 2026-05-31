@@ -52,6 +52,12 @@ async function createTables() {
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY DEFAULT 1, data JSONB NOT NULL DEFAULT '{}'
     );
+
+    CREATE TABLE IF NOT EXISTS usage_log (
+      user_id TEXT NOT NULL, ym TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0, updated_at BIGINT,
+      PRIMARY KEY (user_id, ym)
+    );
   `);
 }
 
