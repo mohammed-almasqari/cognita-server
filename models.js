@@ -4,7 +4,7 @@
 export const PROVIDERS = {
   openai: { label: "OpenAI", defaultModel: "gpt-4o-mini" },
   anthropic: { label: "Anthropic", defaultModel: "claude-3-5-haiku-latest" },
-  gemini: { label: "Google Gemini", defaultModel: "gemini-1.5-flash" },
+  gemini: { label: "Google Gemini", defaultModel: "gemini-2.0-flash" },
 };
 
 export async function callModel({ provider, model, system, user, temperature = 0.5, key }) {

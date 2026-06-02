@@ -3,7 +3,8 @@ import crypto from "crypto";
 
 // يجب أن تطابق FEATURE في shared/config.js داخل الإضافة
 export const FEATURES = {
-  free: { aiOptimize: false, agentRun: false, autoSearchMulti: false, cloudSync: false },
+  // الذكاء بمفتاح المستخدم مجاني؛ Pro يفتح تشغيل الوكلاء والبحث متعدد التبويبات والمزامنة (ووكيل الخادم بمفاتيحنا)
+  free: { aiOptimize: true, agentRun: false, autoSearchMulti: false, cloudSync: false },
   pro: { aiOptimize: true, agentRun: true, autoSearchMulti: true, cloudSync: true },
 };
 

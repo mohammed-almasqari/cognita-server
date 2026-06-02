@@ -32,7 +32,13 @@ test("entitlementFor: Pro منتهٍ يسقط إلى free", () => {
   const e = entitlementFor({ plan: "pro", expiresAt: Date.now() - 1000 });
   assert.equal(e.plan, "free");
   assert.equal(e.valid, false);
-  assert.equal(e.features.aiOptimize, false);
+  assert.equal(e.features.cloudSync, false); // ميزة Pro فقط
+  assert.equal(e.features.agentRun, false);  // ميزة Pro فقط
+});
+
+test("featuresFor: aiOptimize مجانية (تعمل بمفتاح المستخدم)", () => {
+  assert.equal(featuresFor("free").aiOptimize, true);
+  assert.equal(featuresFor("free").cloudSync, false);
 });
 
 test("entitlementFor: Pro مدى الحياة (بلا انتهاء) سارٍ", () => {
