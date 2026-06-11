@@ -260,7 +260,7 @@ app.post("/api/model/proxy", proxyLimiter, authMiddleware, ah(async (req, res) =
   if (limit && used >= limit) return res.status(429).json({ error: `تجاوزت حد الاستخدام الشهري (${limit} طلب).` });
   let text;
   try {
-    text = await proxyCall({ provider, model: req.body?.model || cfg.models[provider], system: req.body?.system, user: req.body?.user || "", temperature: req.body?.temperature });
+    text = await proxyCall({ provider, key, model: req.body?.model || cfg.models[provider], system: req.body?.system, user: req.body?.user || "", temperature: req.body?.temperature });
   } catch (e) { return res.status(502).json({ error: "خطأ من مزوّد النموذج: " + (e.message || "") }); }
   await q(`INSERT INTO usage_log(user_id,ym,count,updated_at) VALUES($1,$2,1,$3)
            ON CONFLICT (user_id,ym) DO UPDATE SET count=usage_log.count+1, updated_at=$3`, [u.id, m, Date.now()]);
