@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cognita — استوديو الذكاء الاصطناعي داخل متصفحك | هندسة البرومبت والوكلاء والبحث</title>
-<meta name="description" content="Cognita إضافة Chrome احترافية: محادثة ذكية مع أي صفحة، هندسة البرومبت ومقارنة النماذج (GPT وClaude وGemini)، توجيه الوكلاء، البحث الذكي، إدخال ونطق صوتي، وتصحيح اتجاه العربية (RTL) — داخل متصفحك مباشرة.">
+<meta name="description" content="Cognita إضافة Chrome احترافية: محادثة ذكية مع أي صفحة، نموذج محلي (Ollama) بلا API مدفوع، هندسة البرومبت ومقارنة النماذج (GPT وClaude وGemini)، الوكلاء، البحث، إدخال ونطق صوتي، وتصحيح العربية (RTL) — داخل متصفحك.">
 <meta name="keywords" content="Cognita, إضافة كروم, هندسة البرومبت, الذكاء الاصطناعي, وكلاء ذكيون, البحث الذكي, تصحيح RTL, أدوات الصفحة, وكيل نماذج, API مركزي, GPT, Claude, Gemini, prompt engineering, AI agents">
 <meta name="author" content="Mohammed Almasqari">
 <meta name="theme-color" content="#6366f1">
@@ -45,13 +45,13 @@
 <div id="site-nav"></div>
 
 <header class="hero"><div class="wrap">
-  <span class="badge">◆ إضافة Chrome · الإصدار 2.0 — جديد</span>
+  <span class="badge">◆ إضافة Chrome · الإصدار 2.1 — جديد</span>
   <h1>ذكاؤك الاصطناعي،<br><span class="g">داخل متصفحك مباشرة</span></h1>
   <p>تحدّث مع أي صفحة، صُغ برومبتاً احترافياً وقارن النماذج، وجّه الوكلاء، وابحث بذكاء — مع إدخال ونطق صوتي وتصحيح اتجاه العربية (RTL). أداة واحدة تعمل أينما كنت على الويب.</p>
   <div class="cta">
     <a class="btn primary" href="/cognita.zip" download>⬇ تحميل الإضافة</a>
     <a class="btn ghost" href="#install">طريقة التثبيت</a>
-    <a class="btn ghost" href="/cognita-guide.pdf?v=200" download>📄 الدليل PDF</a>
+    <a class="btn ghost" href="/cognita-guide.pdf?v=210" download>📄 الدليل PDF</a>
   </div>
   <div class="sub">🟡 على متجر Chrome قريباً · متاحة الآن بالتحميل المباشر (وضع المطوّر) — Chrome · Edge · Brave 116+</div>
 </div></header>
@@ -68,7 +68,7 @@
   </div>
   <div class="center" style="margin-top:30px">
     <a class="btn primary" href="/cognita.zip" download>⬇ تحميل الإضافة (وضع المطوّر)</a>
-    <a class="btn ghost" href="/cognita-guide.pdf?v=200" download>📄 دليل مفصّل</a>
+    <a class="btn ghost" href="/cognita-guide.pdf?v=210" download>📄 دليل مفصّل</a>
   </div>
   <div class="sub center" style="margin-top:16px">🟡 نعمل على نشرها في متجر Chrome Web Store — قريباً تثبيت بنقرة واحدة.</div>
 </div></section>
@@ -91,16 +91,16 @@
 </div></section>
 
 <section id="whats-new"><div class="wrap">
-  <div class="eyebrow">جديد في الإصدار 2.0</div>
-  <h2 class="h2">محادثة مع أي صفحة — وأكثر</h2>
-  <p class="lead">قفزة نوعية: تحدّث مع محتوى أي صفحة، بصوتك، وقارن النماذج في نظرة واحدة.</p>
+  <div class="eyebrow">جديد في الإصدار 2.1</div>
+  <h2 class="h2">شغّل الذكاء بثلاث طرق — بينها نموذج محلي مجاني</h2>
+  <p class="lead">اختر ما يناسبك: مفتاحك الخاص، أو <b>نموذج محلي على جهازك بلا أي API مدفوع</b>، أو خادمنا (Pro) — مع محادثة الصفحة والصوت ومقارنة النماذج.</p>
   <div class="cards">
+    <div class="feat"><div class="ic" style="background:rgba(16,185,129,.16);color:#6ee7b7">🖥️</div>
+      <h3>نموذج محلي (Ollama) <span class="pill pro" style="font-size:11px;background:var(--search)">جديد</span></h3><p>ذكاء على جهازك — بلا API مدفوع.</p>
+      <ul><li>مجاني تماماً وخاص (بياناتك لا تغادر جهازك)</li><li>يعمل بنماذج خفيفة وسريعة</li><li>طريقة ثالثة لكل المميزات</li></ul></div>
     <div class="feat"><div class="ic" style="background:rgba(99,102,241,.16);color:#a5b0ff">💬</div>
-      <h3>محادثة مع الصفحة</h3><p>تحدّث مع محتوى أي موقع.</p>
-      <ul><li>ذاكرة محادثة وسياق الصفحة</li><li>أزرار سريعة: تلخيص · نقاط · ترجمة</li><li>إجابات دقيقة من صفحتك مباشرة</li></ul></div>
-    <div class="feat"><div class="ic" style="background:rgba(16,185,129,.16);color:#6ee7b7">🎙️</div>
-      <h3>إدخال ونطق صوتي</h3><p>تحدّث واستمع — بلا لمس.</p>
-      <ul><li>أملِ رسائلك بصوتك (عربي)</li><li>استمع للإجابات بنقرة</li><li>مجاني تماماً بلا مفتاح</li></ul></div>
+      <h3>محادثة مع الصفحة + صوت</h3><p>تحدّث مع أي موقع بصوتك.</p>
+      <ul><li>ذاكرة محادثة وسياق الصفحة</li><li>إدخال صوتي ونطق للإجابات</li><li>أزرار سريعة: تلخيص · نقاط · ترجمة</li></ul></div>
     <div class="feat"><div class="ic" style="background:rgba(168,85,247,.16);color:#d2a8ff">⚖️</div>
       <h3>مقارنة النماذج</h3><p>أفضل إجابة من عدة نماذج.</p>
       <ul><li>شغّل برومبتك عبر GPT وClaude وGemini</li><li>اعرض النتائج جنباً إلى جنب</li><li>اختر الأفضل وانسخه</li></ul></div>
